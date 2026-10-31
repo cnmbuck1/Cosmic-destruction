@@ -40,11 +40,14 @@ jobs:
           xcrun simctl install "$UDID" "$APP"
           mkdir -p screenshots
           xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmic-destruction -SmokeTestLevel 1 -SmokeTestAutoFire
+          # Capture launchctl output first: piping straight into `grep -q` lets grep
+          # exit early, launchctl dies of SIGPIPE, and pipefail reports a false crash.
+          app_running() { local jobs; jobs=$(xcrun simctl spawn "$UDID" launchctl list); grep -q cosmic-destruction <<<"$jobs"; }
           sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/1-level-loaded.png
           sleep 1;  xcrun simctl io "$UDID" screenshot screenshots/2-impact.png
           sleep 5;  xcrun simctl io "$UDID" screenshot screenshots/3-after-shot.png
           # Fail if the app crashed.
-          if ! xcrun simctl spawn "$UDID" launchctl list | grep -q cosmic-destruction; then
+          if ! app_running; then
             echo "App is not running: it crashed during the smoke test"; exit 1
           fi
           xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmic-destruction || true
@@ -53,7 +56,7 @@ jobs:
           sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/4-level3-loaded.png
           sleep 1;  xcrun simctl io "$UDID" screenshot screenshots/5-level3-impact.png
           sleep 5;  xcrun simctl io "$UDID" screenshot screenshots/6-level3-after-shot.png
-          if ! xcrun simctl spawn "$UDID" launchctl list | grep -q cosmic-destruction; then
+          if ! app_running; then
             echo "App is not running: it crashed on level 3"; exit 1
           fi
           xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmic-destruction || true
