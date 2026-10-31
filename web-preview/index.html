@@ -52,7 +52,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 .bar { background: var(--panel); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; }
 .bar-head { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 0.2em; color: var(--dim); }
 .bar-head b { font-family: var(--mono); font-weight: 500; letter-spacing: 0; font-size: 11px; color: var(--ink); }
-.bar-head b.met { color: var(--cyan); }
+#pct { font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: var(--ink); display: inline-block; transform-origin: left center; }
+#pct.met { color: var(--cyan); }
+#pct.pulse { animation: pulse .45s ease-out; }
+@keyframes pulse { 0% { transform: scale(1); text-shadow: none; } 30% { transform: scale(1.1); text-shadow: 0 0 10px var(--cyan); } 100% { transform: scale(1); text-shadow: none; } }
 .track { position: relative; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.1); }
 #fill { position: absolute; inset: 0 auto 0 0; width: 2%; border-radius: 4px; background: linear-gradient(90deg, var(--purple), var(--cyan)); box-shadow: 0 0 8px rgba(51,235,255,.6); transition: width .3s ease-out; }
 #mark { position: absolute; top: -2px; width: 2px; height: 12px; background: #fff; left: 80%; }
@@ -140,7 +143,7 @@ h2 { font-size: 24px; letter-spacing: 0.12em; }
     <div class="shots" id="shots" aria-label="Shots remaining"></div>
   </div>
   <div class="bar">
-    <div class="bar-head"><span>DESTRUCTION</span><b id="pct">0% / 80%</b></div>
+    <div class="bar-head"><span id="pct">DESTRUCTION: 0%</span><b id="tgt">TARGET 80%</b></div>
     <div class="track"><div id="fill"></div><div id="mark"></div></div>
   </div>
 </div>
@@ -180,55 +183,75 @@ function seeded(seed) {
 }
 const rnd = (r, a, b) => a + (b - a) * r();
 
-// ---------- Rules & tuning (mirrors Core/GameConfig.swift) ----------
+// ---------- Rules & tuning (mirrors Core/GameConfig.swift, build sheet 2.0) ----------
 const RULES = {
-  removalY: -1.6, half: 12.5, fadeY: -5, cleanupY: -18, orbLife: 7, maxOrbs: 3,
-  minResolve: 1, maxResolve: 4.5, failDelay: 1, slowScale: 0.3, slowDur: 0.4, slowFrac: 0.35,
-  displaced: 0.6, yawLim: 32, minEl: -4, maxEl: 40, defEl: 8, sens: 0.22, cannonZ: 5.9,
+  removalY: -1.2, half: 12.5, far: 70, orbLife: 7, orbCleanupY: -24, maxOrbs: 3,
+  minResolve: 1.2, maxResolve: 5, quiet: 0.5, failDelay: 1, victoryDelay: 1.1,
+  slowScale: 0.3, slowDur: 0.45, slowFrac: 0.35, displaced: 0.6,
+  yawLim: 32, minEl: -4, maxEl: 40, defEl: 7, sens: 0.22, cannonZ: 6.2,
+  sigImpulse: 4, suppCooldown: 0.3, maxSupp: 2, trailSpeed: 7, maxTrails: 6,
 };
+// DestructionPhysicsConfig
 const TUNE = {
-  orbMass: 9, orbR: 0.38, launch: 21, blockMass: 1, heavyMul: 3.5,
-  stab: 0.92, linDamp: 0.06, angDamp: 0.1, settle: 0.35, hfov: 50,
+  orbMass: 12, orbR: 0.4, launch: 24, impulseMul: 1.6,
+  stdMass: 0.55, heavyMass: 1.8, friction: 0.5, restitution: 0.1, linDamp: 0.03, angDamp: 0.06, stab: 0.92,
+  radial: 7.5, radius: 2.4, vertical: 0.35, fwdBias: 0.45, maxSupp: 9, maxV: 22,
+  platW: 18, platD: 16, platT: 2.5, fadeDepth: 4, cleanupDepth: 22, settle: 0.35,
+  camElev: 7.6, camDist: 4.2, hfov: 60, shake: 1,
 };
 
 // ---------- Levels (mirrors Core/Levels.swift) ----------
+// Kinds: standard, beam, column, heavy, wedge, energy. Wedge size = base width, height, depth.
 const LEVELS = (() => {
-  const gap = 0.004, cube = 0.9, step = cube + gap, C = [cube, cube, cube];
-  const L1 = [];
-  for (let layer = 0; layer < 5; layer++) {
-    const y = gap + cube / 2 + layer * step;
-    for (const x of [-0.455, 0.455]) for (const z of [-0.455, 0.455])
-      L1.push({ c: [x, y, z], s: C, k: layer === 2 ? "energy" : "standard", t: true });
-  }
-  const L2 = [];
-  for (const tx of [-1.8, 1.8]) for (let layer = 0; layer < 3; layer++) {
-    const y = gap + cube / 2 + layer * step;
-    for (const dx of [-0.455, 0.455]) for (const z of [-0.455, 0.455])
-      L2.push({ c: [tx + dx, y, z], s: C, k: layer === 0 ? "heavy" : "standard", t: true });
-  }
-  const top2 = 3 * step, beam2 = [4.6, 0.45, cube];
-  for (const z of [-0.455, 0.455]) L2.push({ c: [0, top2 + gap + beam2[1] / 2, z], s: beam2, k: "heavy", t: true });
-  const topY = top2 + gap + beam2[1] + gap + cube / 2;
-  for (const x of [-1.365, -0.455, 0.455, 1.365]) L2.push({ c: [x, topY, 0], s: C, k: "energy", t: true });
+  const g = 0.004;
+  const B = () => { const blocks = []; return { blocks, put(k, s, x, z, base, t = true, yaw = 0) { blocks.push({ c: [x, base + g + s[1] / 2, z], s, k, t, yaw }); return base + g + s[1]; } }; };
 
-  const L3 = [], slab = [1.0, 0.5, 1.0];
-  for (let i = 0; i < 6; i++) for (const z of [-0.505, 0.505])
-    L3.push({ c: [(i - 2.5) * 1.01, gap + slab[1] / 2, z], s: slab, k: "heavy", t: false });
-  const fTop = gap + slab[1];
-  for (const x of [-2.5, 2.5]) for (const z of [-0.5, 0.5]) for (let l = 0; l < 3; l++)
-    L3.push({ c: [x, fTop + gap + cube / 2 + l * step, z], s: C, k: "standard", t: true });
-  for (const x of [-1, 1]) for (let l = 0; l < 3; l++)
-    L3.push({ c: [x, fTop + gap + cube / 2 + l * step, 0], s: C, k: "standard", t: true });
-  const colTop = fTop + 3 * step, beam3 = [6.0, 0.45, cube];
-  for (const z of [-0.5, 0.5]) L3.push({ c: [0, colTop + gap + beam3[1] / 2, z], s: beam3, k: "heavy", t: true });
-  const deck = colTop + gap + beam3[1];
-  for (let l = 0; l < 2; l++) for (const x of [-0.455, 0.455]) for (const z of [-0.455, 0.455])
-    L3.push({ c: [x, deck + gap + cube / 2 + l * step, z], s: C, k: "energy", t: true });
+  const l1 = B(); let capTop = 0;
+  for (const x of [-1.7, 1.7]) {
+    const plinth = l1.put("heavy", [1.3, 0.4, 1.3], x, 0, 0, false); let top = 0;
+    for (const z of [-0.3, 0.3]) { const lo = l1.put("column", [0.42, 1.2, 0.42], x, z, plinth); top = l1.put("column", [0.42, 1.2, 0.42], x, z, lo); }
+    capTop = l1.put("standard", [1.1, 0.3, 1.1], x, 0, top);
+  }
+  const lintel = l1.put("beam", [4.6, 0.45, 0.9], 0, 0, capTop);
+  const coreTop = l1.put("energy", [0.7, 0.7, 0.7], 0, 0, lintel);
+  l1.put("wedge", [0.9, 0.55, 0.7], 0, 0, coreTop);
+  for (const x of [-1, 1]) { const ct = l1.put("standard", [0.6, 0.6, 0.6], x, 0, lintel); l1.put("wedge", [0.6, 0.4, 0.6], x, 0, ct); }
+  for (const x of [-1.85, 1.85]) l1.put("wedge", [0.8, 0.5, 0.9], x, 0, lintel);
+
+  const l2 = B(); const ax = -2;
+  const aBase = l2.put("heavy", [1.4, 0.5, 1.4], ax, 0, 0, false); let aTop = 0;
+  for (const dx of [-0.45, 0.45]) for (const z of [-0.45, 0.45]) aTop = l2.put("column", [0.3, 1.2, 0.3], ax + dx, z, aBase);
+  const aCap1 = l2.put("standard", [1.3, 0.3, 1.3], ax, 0, aTop); let aUp = 0;
+  for (const x of [-2.45, -1.95]) for (const z of [-0.4, 0.4]) aUp = l2.put("column", [0.3, 1.1, 0.3], x, z, aCap1);
+  const aCap2 = l2.put("standard", [0.9, 0.25, 1.1], -2.2, 0, aUp);
+  const spire = l2.put("standard", [0.6, 0.6, 0.6], -2.2, 0, aCap2);
+  l2.put("wedge", [0.6, 0.6, 0.6], -2.2, 0, spire);
+  const bx = 2, bBase = l2.put("heavy", [1.4, 0.5, 1.4], bx, 0, 0, false); let layer = bBase;
+  for (let i = 0; i < 2; i++) { let top = 0; for (const dx of [-0.302, 0.302]) for (const z of [-0.302, 0.302]) top = l2.put("heavy", [0.6, 0.6, 0.6], bx + dx, z, layer); layer = top; }
+  const bCap = l2.put("standard", [1.3, 0.3, 1.3], bx, 0, layer);
+  l2.put("wedge", [0.6, 0.5, 0.6], 2.2, 0, bCap);
+  for (const z of [-0.45, 0.45]) l2.put("standard", [0.35, 0.35, 0.35], 2.45, z, bCap);
+  const bridge = Math.max(aCap1, bCap); let deck2 = 0;
+  for (const z of [-0.27, 0.27]) deck2 = l2.put("beam", [3.4, 0.35, 0.5], 0, z, bridge);
+  l2.put("energy", [0.6, 0.6, 0.6], 0, 0, deck2);
+  for (const x of [-0.9, 0.9]) l2.put("standard", [0.5, 0.5, 0.5], x, 0, deck2);
+
+  const l3 = B();
+  for (const x of [-1.32, 1.32]) for (const z of [-0.82, 0.82]) l3.put("heavy", [2.6, 0.4, 1.6], x, z, 0, false);
+  const floor = g + 0.4; let colTop = 0;
+  for (const x of [-1.6, 1.6]) for (const z of [-0.6, 0.6]) { const lo = l3.put("column", [0.45, 1.0, 0.45], x, z, floor); colTop = l3.put("column", [0.45, 1.0, 0.45], x, z, lo); }
+  let deck3 = 0;
+  for (const z of [-0.61, 0.61]) deck3 = l3.put("beam", [3.8, 0.3, 1.2], 0, z, colTop);
+  const core3 = l3.put("energy", [0.7, 0.7, 0.7], 0, 0, deck3);
+  for (const x of [-0.75, 0.75]) for (const z of [-0.55, 0.55]) { const gt = l3.put("standard", [0.5, 0.5, 0.5], x, z, deck3); l3.put("wedge", [0.5, 0.4, 0.5], x, z, gt, true, Math.PI / 2); }
+  const crown = l3.put("standard", [0.9, 0.2, 0.9], 0, 0, core3);
+  l3.put("wedge", [0.8, 0.5, 0.8], 0, 0, crown);
+  for (const x of [-2.3, 2.3]) for (const z of [-1.25, 1.25]) { const lo = l3.put("standard", [0.55, 0.55, 0.55], x, z, floor); const up = l3.put("standard", [0.55, 0.55, 0.55], x, z, lo); l3.put("wedge", [0.55, 0.45, 0.55], x, z, up); }
 
   return [
-    { id: 1, name: "First Impact", diff: "Easy", gravity: -13, shots: 3, threshold: 0.8, origin: [0, 0, -4.0], blocks: L1 },
-    { id: 2, name: "Twin Towers", diff: "Moderate", gravity: -13, shots: 3, threshold: 0.8, origin: [0, 0, -4.0], blocks: L2 },
-    { id: 3, name: "Lunar Fortress", diff: "Challenging", gravity: -10, shots: 3, threshold: 0.8, origin: [0, 0, -4.2], blocks: L3 },
+    { id: 1, name: "Lunar Gateway", diff: "Easy", gravity: -12, shots: 3, threshold: 0.8, origin: [0, 0, -4.2], pull: 0, el: 20, blocks: l1.blocks },
+    { id: 2, name: "Twin Spires", diff: "Moderate", gravity: -12, shots: 3, threshold: 0.8, origin: [0, 0, -4.2], pull: 0, el: 14, blocks: l2.blocks },
+    { id: 3, name: "Orbital Citadel", diff: "Challenging", gravity: -10, shots: 3, threshold: 0.8, origin: [0, 0, -4.4], pull: 0.8, el: 17, blocks: l3.blocks },
   ];
 })();
 const starsFor = (shots) => (shots <= 1 ? 3 : shots <= 2 ? 2 : 1);
@@ -247,8 +270,8 @@ function spaceTexture() {
   const base = g.createLinearGradient(0, 0, 0, 1024);
   base.addColorStop(0, "#010205"); base.addColorStop(0.55, "#050818"); base.addColorStop(1, "#010205");
   g.fillStyle = base; g.fillRect(0, 0, 2048, 1024);
-  const neb = ["89,26,153", "13,89,140", "140,20,102"];
-  for (let i = 0; i < 34; i++) {
+  const neb = ["77,31,158", "20,51,153", "31,97,179"];
+  for (let i = 0; i < 48; i++) {
     const x = rnd(r, 200, 1850), y = rnd(r, 280, 620), rad = rnd(r, 90, 300), a = rnd(r, 0.05, 0.13);
     const gr = g.createRadialGradient(x, y, 0, x, y, rad);
     gr.addColorStop(0, `rgba(${neb[i % 3]},${a})`); gr.addColorStop(1, `rgba(${neb[i % 3]},0)`);
@@ -273,45 +296,81 @@ function spaceTexture() {
   g.beginPath(); g.ellipse(px, py, 125, 26, -0.35, 0, Math.PI * 2); g.stroke();
   return c;
 }
+function valueNoise(seed) {
+  const r = seeded(seed), T = new Float32Array(256 * 256).map(() => r());
+  const L = (x, y) => T[(y & 255) * 256 + (x & 255)];
+  const v = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y); let fx = x - xi, fy = y - yi; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    const a = L(xi, yi), b = L(xi + 1, yi), c = L(xi, yi + 1), d = L(xi + 1, yi + 1); const top = a + (b - a) * fx; return top + (c + (d - c) * fx - top) * fy; };
+  const fbm = (x, y, o) => { let s = 0, a = 0.5, f = 1, n = 0; for (let i = 0; i < o; i++) { s += (v(x * f, y * f) - 0.5) * a; n += a; a *= 0.5; f *= 2; } return s / n; };
+  return { v, fbm };
+}
 function lunarTextures() {
-  const [d, gd] = canvas(1024, 1024), r = seeded(21);
-  gd.fillStyle = "#17181f"; gd.fillRect(0, 0, 1024, 1024);
-  for (let i = 0; i < 5000; i++) {
-    const light = r() > 0.5, s = rnd(r, 1, 9);
-    gd.fillStyle = light ? `rgba(77,77,77,${rnd(r, .03, .08)})` : `rgba(0,0,0,${rnd(r, .05, .12)})`;
-    gd.beginPath(); gd.arc(rnd(r, 0, 1024), rnd(r, 0, 1024), s / 2, 0, 7); gd.fill();
-  }
-  for (let i = 0; i < 26; i++) {
-    const s = rnd(r, 12, 60), x = rnd(r, 0, 1024), y = rnd(r, 0, 1024);
-    gd.fillStyle = "rgba(0,0,0,.22)"; gd.beginPath(); gd.arc(x, y, s / 2, 0, 7); gd.fill();
-    gd.strokeStyle = "rgba(115,115,115,.12)"; gd.lineWidth = 2; gd.stroke();
-  }
-  const [e, ge] = canvas(1024, 1024), r2 = seeded(33);
-  ge.fillStyle = "#000"; ge.fillRect(0, 0, 1024, 1024);
-  ge.strokeStyle = "rgba(26,140,191,.35)"; ge.lineWidth = 2;
-  for (let rad = 120; rad <= 480; rad += 120) { ge.beginPath(); ge.arc(512, 512, rad, 0, 7); ge.stroke(); }
-  ge.strokeStyle = "rgba(89,38,153,.22)"; ge.lineWidth = 1.5;
-  const hex = 64; let row = 0;
-  for (let y = 0; y <= 1024; y += hex * 0.866, row++) {
-    for (let x = row % 2 ? hex / 2 : 0; x <= 1024; x += hex) {
-      ge.beginPath();
-      for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6; ge[k ? "lineTo" : "moveTo"](x + Math.cos(a) * hex / 2, y + Math.sin(a) * hex / 2); }
-      ge.closePath(); ge.stroke();
+  // Shared height field: noise plus craters with raised rims (mirrors ProceduralTextures.swift).
+  const N = 512, H = new Float32Array(N * N), nz = valueNoise(61);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) H[y * N + x] = 0.5 + 0.35 * nz.fbm(x / N * 9, y / N * 9, 5);
+  const r = seeded(21);
+  for (let i = 0; i < 70; i++) {
+    const rad = i < 8 ? rnd(r, 22, 46) : rnd(r, 4, 16), cx = rnd(r, 0, N), cy = rnd(r, 0, N), depth = i < 8 ? 0.4 : 0.25, reach = Math.ceil(rad * 1.5);
+    for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+      const x = Math.floor(cx) + dx, y = Math.floor(cy) + dy; if (x < 0 || y < 0 || x >= N || y >= N) continue;
+      const d = Math.hypot(dx, dy) / rad;
+      H[y * N + x] += d < 1 ? -depth * (1 - d * d) : d < 1.5 ? depth * 0.35 * Math.sin((d - 1) / 0.5 * Math.PI) : 0;
     }
   }
+  const [d, gd] = canvas(N, N), img = gd.createImageData(N, N), sp = valueNoise(77);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const h = H[y * N + x], hx = H[y * N + Math.min(x + 1, N - 1)] - h, hy = H[Math.min(y + 1, N - 1) * N + x] - h;
+    const lit = clamp(-(hx + hy) * 9, -0.25, 0.25), grain = sp.v(x * 0.9, y * 0.9) - 0.5;
+    const b = clamp(0.13 + 0.12 * h + lit * 0.35 + grain * 0.05, 0, 1) * 255, o = (y * N + x) * 4;
+    img.data[o] = b * 0.95; img.data[o + 1] = b * 0.97; img.data[o + 2] = Math.min(255, b * 1.08); img.data[o + 3] = 255;
+  }
+  gd.putImageData(img, 0, 0);
+  const [e, ge] = canvas(1024, 1024), r2 = seeded(33);
+  ge.fillStyle = "#000"; ge.fillRect(0, 0, 1024, 1024);
   ge.lineCap = "round"; ge.lineJoin = "round";
-  for (let i = 0; i < 16; i++) {
-    const col = i % 2 ? "166,77,255" : "51,230,255";
-    let x = rnd(r2, 0, 1024), y = rnd(r2, 0, 1024), a = rnd(r2, 0, 6.28);
-    const pts = [[x, y]];
-    const n = Math.floor(rnd(r2, 6, 16));
-    for (let j = 0; j < n; j++) { a += rnd(r2, -0.7, 0.7); const l = rnd(r2, 10, 34); x += Math.cos(a) * l; y += Math.sin(a) * l; pts.push([x, y]); }
-    for (const [w, al] of [[7, 0.25], [2, 0.95]]) {
+  for (let i = 0; i < 14; i++) {
+    const col = i % 2 ? "153,71,255" : "51,230,255";
+    const a0 = rnd(r2, 0, 6.28), r0 = rnd(r2, 300, 470);
+    let x = 512 + Math.cos(a0) * r0, y = 512 + Math.sin(a0) * r0, a = a0 + Math.PI / 2 * (r2() > 0.5 ? 1 : -1);
+    const pts = [[x, y]], n = Math.floor(rnd(r2, 5, 12));
+    for (let j = 0; j < n; j++) { a += rnd(r2, -0.8, 0.8); const l = rnd(r2, 8, 26); x += Math.cos(a) * l; y += Math.sin(a) * l; pts.push([x, y]); }
+    for (const [w, al] of [[6, 0.18], [1.6, 0.85]]) {
       ge.strokeStyle = `rgba(${col},${al})`; ge.lineWidth = w; ge.beginPath();
       pts.forEach(([px, py], k) => ge[k ? "lineTo" : "moveTo"](px, py)); ge.stroke();
     }
   }
   return [d, e];
+}
+function strataTextures() {
+  const N = 512, r = seeded(51), bands = []; let shade = 0.12;
+  while (bands.length < N) { shade = clamp(shade + rnd(r, -0.05, 0.05), 0.06, 0.2); const h = Math.floor(rnd(r, 6, 40)); for (let i = 0; i < h; i++) bands.push(shade); }
+  const nz = valueNoise(53), [d, gd] = canvas(N, N), img = gd.createImageData(N, N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const row = clamp(y + Math.round(6 * nz.fbm(x / 64, 0.5, 2)), 0, N - 1), v = (bands[row] + nz.fbm(x / 9, y / 3, 3) * 0.05) * 255, o = (y * N + x) * 4;
+    img.data[o] = v * 0.95; img.data[o + 1] = v * 0.95; img.data[o + 2] = Math.min(255, v * 1.12); img.data[o + 3] = 255;
+  }
+  gd.putImageData(img, 0, 0);
+  const [e, ge] = canvas(N, N), r2 = seeded(57);
+  ge.fillStyle = "#000"; ge.fillRect(0, 0, N, N); ge.lineCap = "round";
+  for (let i = 0; i < 5; i++) {
+    const col = i === 0 ? "51,235,255" : "158,77,255"; let x = rnd(r2, 0, N), y = rnd(r2, 60, 460); const pts = [[x, y]];
+    for (let j = 0, n = Math.floor(rnd(r2, 4, 9)); j < n; j++) { x += rnd(r2, 12, 34); y += rnd(r2, -6, 6); pts.push([x, y]); }
+    for (const [w, al] of [[6, 0.2], [1.5, 0.8]]) { ge.strokeStyle = `rgba(${col},${al})`; ge.lineWidth = w; ge.beginPath(); pts.forEach(([px, py], k) => ge[k ? "lineTo" : "moveTo"](px, py)); ge.stroke(); }
+  }
+  return [d, e];
+}
+function energyCircleTexture() {
+  const [c, g] = canvas(512, 512);
+  g.fillStyle = "#000"; g.fillRect(0, 0, 512, 512);
+  const f = g.createRadialGradient(256, 256, 0, 256, 256, 256);
+  f.addColorStop(0, "rgb(20,20,20)"); f.addColorStop(0.8, "rgb(8,8,8)"); f.addColorStop(1, "#000");
+  g.fillStyle = f; g.fillRect(0, 0, 512, 512);
+  const ring = (rad, w, wh, dash = []) => { g.strokeStyle = `rgb(${wh},${wh},${wh})`; g.lineWidth = w; g.setLineDash(dash); g.beginPath(); g.arc(256, 256, rad, 0, 7); g.stroke(); };
+  ring(246, 3, 140); ring(236, 1.5, 64); ring(200, 2, 90, [18, 10]); ring(120, 1.5, 51, [4, 8]); g.setLineDash([]);
+  g.strokeStyle = "rgb(102,102,102)"; g.lineWidth = 2; g.beginPath();
+  for (let k = 0; k < 48; k++) { const a = k / 48 * Math.PI * 2, r0 = k % 4 ? 220 : 208; g.moveTo(256 + Math.cos(a) * r0, 256 + Math.sin(a) * r0); g.lineTo(256 + Math.cos(a) * 232, 256 + Math.sin(a) * 232); }
+  g.stroke();
+  return c;
 }
 function panelTexture(base, edge, seam, seed) {
   const [c, g] = canvas(256, 256), r = seeded(seed);
@@ -364,8 +423,17 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromEquirectangular(bg).texture;
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 400);
-const CAM_POS = new THREE.Vector3(0, 7.0, 10.5), CAM_LOOK = new THREE.Vector3(0, 1.0, -4.5);
-camera.position.copy(CAM_POS); camera.lookAt(CAM_LOOK);
+// Camera framing (mirrors SceneManager.frame): behind and above the cannon,
+// pulled back per level, with a restrained look-target follow after impact.
+const CAM_POS = new THREE.Vector3(), CAM_BASE_LOOK = new THREE.Vector3(), CAM_LOOK = new THREE.Vector3();
+let camFollow = null;
+function frameLevel(l) {
+  const [ox, , oz] = l ? l.origin : [0, 0, -4.2], pull = l ? l.pull : 0;
+  CAM_POS.set(0, TUNE.camElev + pull * 0.45, RULES.cannonZ + TUNE.camDist + pull);
+  CAM_BASE_LOOK.set(ox, 0, oz + 2.4); CAM_LOOK.copy(CAM_BASE_LOOK); camFollow = null;
+  camera.position.copy(CAM_POS); camera.lookAt(CAM_LOOK);
+}
+frameLevel(null);
 
 let composer = null, bloom = null;
 if (THREE.EffectComposer && THREE.UnrealBloomPass && THREE.GammaCorrectionShader) {
@@ -379,7 +447,7 @@ function resize() {
   const w = window.innerWidth, h = window.innerHeight, aspect = w / h;
   camera.aspect = aspect;
   // Keep a 50° horizontal field in portrait; clamp the vertical field on wide screens.
-  camera.fov = clamp(2 * Math.atan(Math.tan(TUNE.hfov * DEG / 2) / aspect) / DEG, 38, 80);
+  camera.fov = clamp(2 * Math.atan(Math.tan(TUNE.hfov * DEG / 2) / aspect) / DEG, 38, 110);
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
   if (composer) { composer.setSize(w, h); }
@@ -396,7 +464,7 @@ Object.assign(key.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, n
 key.shadow.bias = -0.0008; key.shadow.radius = 3;
 scene.add(key, key.target);
 const rim = new THREE.DirectionalLight(0x9e4dff, 1.3); rim.position.set(-4, 6, -14); scene.add(rim);
-const accent = new THREE.PointLight(0xff40bf, 1.2, 12); accent.position.set(5, 2.5, -6); scene.add(accent);
+const accent = new THREE.PointLight(0x9e4dff, 1.2, 12); accent.position.set(5, 2.5, -6); scene.add(accent);
 const impactLight = new THREE.PointLight(0x33ebff, 0, 8); scene.add(impactLight);
 
 // ---------- Materials ----------
@@ -414,72 +482,195 @@ const M = {
   dot: new THREE.MeshBasicMaterial({ color: 0x33ebff, transparent: true, depthWrite: false }),
 };
 const lt = tex(lunarD), le = tex(lunarE);
-for (const t of [lt, le]) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.repeat.set(1 / 16, 1 / 14); t.offset.set(0.5, 0.5); }
-M.top = std({ map: lt, emissiveMap: le, emissive: 0xffffff, emissiveIntensity: 1.0, metalness: 0.15, roughness: 0.85, envMapIntensity: 0.25 });
+M.top = std({ map: lt, emissiveMap: le, emissive: 0xffffff, emissiveIntensity: 1.0, metalness: 0.05, roughness: 0.92, envMapIntensity: 0.25 });
+const [strD, strE] = strataTextures(), st1 = tex(strD), st2 = tex(strE);
+for (const t of [st1, st2]) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+M.strata = std({ map: st1, emissiveMap: st2, emissive: 0xffffff, emissiveIntensity: 1.0, metalness: 0.05, roughness: 0.95, envMapIntensity: 0.2 });
+M.rimCyan.side = THREE.DoubleSide;
+M.circle = new THREE.MeshBasicMaterial({ map: tex(energyCircleTexture()), color: 0x59d9ff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
 M.rock.envMapIntensity = 0.25;
 const blockMat = {};
 function blockMaterial(kind, target) {
   const k = kind + target;
   if (blockMat[k]) return blockMat[k];
+  // Structural pieces have no glow; only energy cores emit (build sheet 2.0 §3.3).
+  const P = {
+    standard: ["#4d525e", "#808c9e", "#292b36", 1, 0.6, 0.42],
+    beam: ["#3d424f", "#9ea8b8", "#1f212b", 5, 0.8, 0.3],
+    column: ["#5c5c66", "#9494a3", "#33333d", 6, 0.5, 0.5],
+    heavy: ["#1f1f26", "#474557", "#0d0d12", 2, 0.8, 0.35],
+    wedge: ["#454054", "#80759e", "#241f33", 7, 0.65, 0.38],
+  };
   let m;
-  if (!target) m = std({ map: tex(panelTexture("#1a1a21", "#333", "#0d0d0d", 4)), metalness: 0.4, roughness: 0.75 });
-  else if (kind === "heavy") m = std({ map: tex(panelTexture("#1f1f29", "#4d4761", "#0d0d12", 2)), emissiveMap: tex(emissionTexture("#9e4dff", false)), emissive: 0xffffff, emissiveIntensity: 0.7, metalness: 0.75, roughness: 0.35 });
-  else if (kind === "energy") m = std({ map: tex(panelTexture("#1a2438", "#4d99bf", "#141a29", 3)), emissiveMap: tex(emissionTexture("#33ebff", true)), emissive: 0xffffff, emissiveIntensity: 1.6, metalness: 0.5, roughness: 0.3 });
-  else m = std({ map: tex(panelTexture("#4d5466", "#8c9eb8", "#292e3d", 1)), emissiveMap: tex(emissionTexture("#33ebff", false)), emissive: 0xffffff, emissiveIntensity: 0.5, metalness: 0.55, roughness: 0.45 });
+  if (!target) m = std({ map: tex(panelTexture("#1a1a1f", "#333", "#0d0d0d", 4)), metalness: 0.4, roughness: 0.75 });
+  else if (kind === "energy") m = std({ map: tex(panelTexture("#1a2438", "#4d99bf", "#141a29", 3)), emissiveMap: tex(emissionTexture("#33ebff", true)), emissive: 0xffffff, emissiveIntensity: 1.8, metalness: 0.5, roughness: 0.3 });
+  else { const [b, e, sm, seed, met, rough] = P[kind]; m = std({ map: tex(panelTexture(b, e, sm, seed)), metalness: met, roughness: rough }); }
   return (blockMat[k] = m);
 }
 
 // ---------- Physics world ----------
 const world = new CANNON.World();
 world.broadphase = new CANNON.SAPBroadphase(world);
-world.solver.iterations = 20;
+world.solver.iterations = 30;
 world.allowSleep = true;
-world.defaultContactMaterial.friction = 0.38;
-world.defaultContactMaterial.restitution = 0.06;
+world.defaultContactMaterial.friction = TUNE.friction;
+world.defaultContactMaterial.restitution = TUNE.restitution;
 const FIXED = 1 / 120;
 
-// ---------- Platform ----------
-function outline(scale = 1) {
-  const r = seeded(5), count = 72, a = 8, b = 7, n = 4;
-  let noise = Array.from({ length: count }, () => rnd(r, -1, 1));
-  for (let p = 0; p < 2; p++) noise = noise.map((_, i) => (noise[(i + count - 1) % count] + 2 * noise[i] + noise[(i + 1) % count]) / 4);
-  const pts = [];
-  for (let i = 0; i < count; i++) {
-    const t = i / count * Math.PI * 2, c = Math.cos(t), s = Math.sin(t);
-    const rr = (1 / Math.pow(Math.pow(Math.abs(c) / a, n) + Math.pow(Math.abs(s) / b, n), 1 / n) + noise[i] * 0.45 - 0.15) * scale;
-    pts.push(new THREE.Vector2(rr * c, rr * s));
+// ---------- Lunar fragment (mirrors Scene/PlatformBuilder.swift) ----------
+const CANNON_XZ = [0, RULES.cannonZ];
+const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+const OUTLINE = (() => {
+  const r = seeded(5), N = 96, a = TUNE.platW / 2, b = TUNE.platD / 2, n = 2.6;
+  const ph = [0, 1, 2, 3].map(() => rnd(r, 0, Math.PI * 2));
+  const bites = [0, 1, 2, 3, 4].map(() => [rnd(r, 0, Math.PI * 2), rnd(r, 0.12, 0.26), rnd(r, 0.05, 0.1)]);
+  let j = Array.from({ length: N }, () => rnd(r, -1, 1));
+  for (let p = 0; p < 2; p++) j = j.map((_, i) => (j[(i + N - 1) % N] + 2 * j[i] + j[(i + 1) % N]) / 4);
+  return j.map((jit, i) => {
+    const t = i / N * Math.PI * 2, c = Math.cos(t), s = Math.sin(t);
+    const rr = 1 / Math.pow(Math.pow(Math.abs(c) / a, n) + Math.pow(Math.abs(s) / b, n), 1 / n);
+    let k = 0.96 + 0.035 * Math.sin(3 * t + ph[0]) + 0.025 * Math.sin(5 * t + ph[1]) + 0.018 * Math.sin(9 * t + ph[2]) + 0.012 * Math.sin(17 * t + ph[3]) + 0.03 * jit;
+    for (const [ang, w, d] of bites) { let dl = Math.abs(t - ang); dl = Math.min(dl, Math.PI * 2 - dl); if (dl < w) { const x = dl / w; k -= d * (1 - x * x); } }
+    if (s > 0.85) k = Math.max(k, 0.99);
+    k = Math.min(k, 1);
+    return [c * rr * k, s * rr * k];
+  });
+})();
+const CRATERS = (() => {
+  const r = seeded(17), out = []; let tries = 0;
+  while (out.length < 11 && tries++ < 200) {
+    const q = OUTLINE[Math.floor(rnd(r, 0, OUTLINE.length - 1))], s = rnd(r, 0.8, 0.92), c = [q[0] * s, q[1] * s];
+    if (Math.hypot(c[0] - CANNON_XZ[0], c[1] - CANNON_XZ[1]) < 2.6) continue;
+    if (out.some((o) => Math.hypot(o.c[0] - c[0], o.c[1] - c[1]) < o.r + 0.9)) continue;
+    out.push({ c, r: rnd(r, 0.5, 1.1), d: rnd(r, 0.08, 0.16) });
   }
-  return new THREE.Shape(pts);
+  return out;
+})();
+function terrainHeight(x, z, s) {
+  let edge = smooth(0.7, 0.93, s) * smooth(1.4, 2.4, Math.hypot(x - CANNON_XZ[0], z - CANNON_XZ[1]));
+  if (edge <= 0) return 0;
+  let h = 0.09 * Math.sin(0.9 * x + 1.3) * Math.sin(0.8 * z + 0.4) + 0.06 * Math.sin(2.1 * x - 1.7 * z + 2) + 0.035 * Math.sin(4.3 * x + 3.1 * z + 0.7) + 0.04;
+  for (const c of CRATERS) { const d = Math.hypot(x - c.c[0], z - c.c[1]) / c.r; if (d < 1) h -= c.d * (1 - d * d); else if (d < 1.35) h += c.d * 0.45 * Math.sin((d - 1) / 0.35 * Math.PI); }
+  h -= 0.18 * smooth(0.95, 1, s);
+  return h * edge;
 }
+function meshBuilder() {
+  const pos = [], uv = [], idx = [];
+  const v = new THREE.Vector3(), w = new THREE.Vector3(), n = new THREE.Vector3();
+  return {
+    add(p, t) { pos.push(p[0], p[1], p[2]); uv.push(t[0], t[1]); return pos.length / 3 - 1; },
+    tri(a, b, c, hint) {
+      v.set(pos[b * 3] - pos[a * 3], pos[b * 3 + 1] - pos[a * 3 + 1], pos[b * 3 + 2] - pos[a * 3 + 2]);
+      w.set(pos[c * 3] - pos[a * 3], pos[c * 3 + 1] - pos[a * 3 + 1], pos[c * 3 + 2] - pos[a * 3 + 2]);
+      n.crossVectors(v, w);
+      if (n.x * hint[0] + n.y * hint[1] + n.z * hint[2] >= 0) idx.push(a, b, c); else idx.push(a, c, b);
+    },
+    build() {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx); g.computeVertexNormals(); return g;
+    },
+  };
+}
+const energyCircle = (() => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(6.8, 6.8), M.circle);
+  m.rotation.x = -Math.PI / 2; m.renderOrder = 5;
+  const holder = new THREE.Group(); holder.add(m); scene.add(holder); return holder;
+})();
 (function buildPlatform() {
-  const geo = new THREE.ExtrudeGeometry(outline(), { depth: 1.5, bevelEnabled: true, bevelSize: 0.08, bevelThickness: 0.08, bevelSegments: 1, curveSegments: 1 });
-  const slab = new THREE.Mesh(geo, [M.top, M.rock]);
-  // Extrudes along +Z; rotate so +Z points up, then sink so the top face sits at y = 0.
-  slab.rotation.x = -Math.PI / 2; slab.position.y = -1.5;
-  slab.receiveShadow = true;
-  scene.add(slab);
-  for (const [s, y, m] of [[1.02, -0.18, M.rimCyan], [1.014, -1.25, M.rimPurple]]) {
-    const rimMesh = new THREE.Mesh(new THREE.ExtrudeGeometry(outline(s), { depth: 0.06, bevelEnabled: false, curveSegments: 1 }), m);
-    rimMesh.rotation.x = -Math.PI / 2; rimMesh.position.y = y - 0.06; scene.add(rimMesh);
+  const N = OUTLINE.length, W = TUNE.platW, D = TUNE.platD, T = TUNE.platT;
+  // Top surface: concentric rings following the outline, flat over the play area.
+  const rings = [0.12, 0.25, 0.38, 0.5, 0.6, 0.68, 0.74, 0.79, 0.835, 0.87, 0.9, 0.925, 0.95, 0.97, 0.985, 1];
+  const top = meshBuilder(), up = [0, 1, 0];
+  const center = top.add([0, 0, 0], [0.5, 0.5]);
+  let prev = [], edgeH = [];
+  rings.forEach((s, k) => {
+    const cur = OUTLINE.map(([x, z]) => {
+      const px = x * s, pz = z * s, h = terrainHeight(px, pz, s);
+      if (k === rings.length - 1) edgeH.push(h);
+      return top.add([px, h, pz], [px / W + 0.5, 1 - (pz / D + 0.5)]);
+    });
+    for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N;
+      if (k === 0) top.tri(center, cur[i], cur[j], up);
+      else { top.tri(prev[i], cur[i], cur[j], up); top.tri(prev[i], cur[j], prev[j], up); }
+    }
+    prev = cur;
+  });
+  const topMesh = new THREE.Mesh(top.build(), M.top); topMesh.receiveShadow = true; scene.add(topMesh);
+
+  // Strata sides and a tapering rocky root (floating-island silhouette).
+  const rows = [[-0.28, 1, 0.05], [-0.55, 0.975, 0.09], [-0.8, 0.99, 0.06], [-1.15, 0.955, 0.1], [-1.5, 0.965, 0.07], [-1.95, 0.925, 0.12], [-T, 0.9, 0.1],
+    [-T - 0.9, 0.78, 0.22], [-T - 2, 0.62, 0.3], [-T - 3.2, 0.46, 0.32], [-T - 4.4, 0.31, 0.28], [-T - 5.6, 0.18, 0.2], [-T - 6.6, 0.08, 0.12]];
+  const r = seeded(23), side = meshBuilder(), around = 14;
+  const sideRow = (pts) => Array.from({ length: N + 1 }, (_, i) => { const p = pts[i % N]; return side.add(p, [i / N * around, -p[1] / 3]); });
+  let prevPts = OUTLINE.map(([x, z], i) => [x, edgeH[i], z]), prevRow = sideRow(prevPts);
+  for (const [y, sc, jit] of rows) {
+    const pts = OUTLINE.map(([x, z]) => { const l = Math.hypot(x, z) || 1, rr = rnd(r, -jit, jit); return [x * sc + x / l * rr, y + rnd(r, -0.06, 0.06), z * sc + z / l * rr]; });
+    const row = sideRow(pts);
+    for (let i = 0; i < N; i++) {
+      const hint = [(prevPts[i][0] + pts[i][0]) / 2, y < -T ? -2.5 : 0, (prevPts[i][2] + pts[i][2]) / 2];
+      side.tri(prevRow[i], row[i], row[i + 1], hint); side.tri(prevRow[i], row[i + 1], prevRow[i + 1], hint);
+    }
+    prevRow = row; prevPts = pts;
   }
-  const cone = new THREE.Mesh(new THREE.CylinderGeometry(7.2, 1.2, 4.5, 18), M.rock);
-  cone.position.y = -1.5 - 2.25; cone.scale.z = 0.86; scene.add(cone);
-  const r = seeded(11), boulder = new THREE.IcosahedronGeometry(1, 0);
-  for (let i = 0; i < 9; i++) {
-    const m = new THREE.Mesh(boulder, M.rock), a = rnd(r, 0, 6.28), d = rnd(r, 2, 5.5), s = rnd(r, 0.6, 1.5);
-    m.position.set(Math.cos(a) * d, -1.5 - rnd(r, 0.3, 2.6), Math.sin(a) * d * 0.8);
-    m.scale.set(s * rnd(r, 0.8, 1.4), s * 0.7, s); m.rotation.set(r() * 3, r() * 3, r() * 3); scene.add(m);
+  const tip = side.add([0.3, -T - 7.6, -0.4], [0, (T + 7.6) / 3]);
+  for (let i = 0; i < N; i++) side.tri(prevRow[i], tip, prevRow[i + 1], [0, -1, 0]);
+  scene.add(new THREE.Mesh(side.build(), M.strata));
+
+  // Broken cyan edge accents.
+  const acc = meshBuilder(), ra = seeded(31);
+  for (let i = 0; i < N;) {
+    const run = Math.floor(rnd(ra, 3, 9)), gap = Math.floor(rnd(ra, 2, 7));
+    for (let k = i; k < Math.min(i + run, N); k++) {
+      const j = (k + 1) % N, a = OUTLINE[k], b = OUTLINE[j], ya = edgeH[k] - 0.02, yb = edgeH[j] - 0.02;
+      const v0 = acc.add([a[0] * 1.004, ya, a[1] * 1.004], [0, 0]), v1 = acc.add([b[0] * 1.004, yb, b[1] * 1.004], [1, 0]);
+      const v2 = acc.add([b[0] * 1.004, yb - 0.05, b[1] * 1.004], [1, 1]), v3 = acc.add([a[0] * 1.004, ya - 0.05, a[1] * 1.004], [0, 1]);
+      const out = [(a[0] + b[0]) / 2, 0, (a[1] + b[1]) / 2];
+      acc.tri(v0, v1, v2, out); acc.tri(v0, v2, v3, out);
+    }
+    i += run + gap;
   }
-  const shard = new THREE.ConeGeometry(0.22, 1.1, 4);
-  for (let i = 0; i < 7; i++) {
-    const m = new THREE.Mesh(shard, M.crystal), a = rnd(r, 0, 6.28), d = rnd(r, 3, 6.5);
-    m.position.set(Math.cos(a) * d, -1.5 - 0.5, Math.sin(a) * d * 0.85);
-    m.rotation.set(Math.PI + rnd(r, -0.4, 0.4), r() * 3, rnd(r, -0.4, 0.4)); scene.add(m);
+  scene.add(new THREE.Mesh(acc.build(), M.rimCyan));
+
+  // Crystal clusters on the outer band and shards under the island.
+  const rc = seeded(41), shard = new THREE.ConeGeometry(0.16, 0.75, 4);
+  let placed = 0, tries = 0;
+  while (placed < 6 && tries++ < 100) {
+    const q = OUTLINE[Math.floor(rnd(rc, 0, N - 1))], s = rnd(rc, 0.84, 0.92), px = q[0] * s, pz = q[1] * s;
+    if (Math.hypot(px - CANNON_XZ[0], pz - CANNON_XZ[1]) < 3 || (Math.abs(px) < 4 && pz < 0)) continue;
+    const cl = new THREE.Group(); cl.position.set(px, -0.05, pz);
+    for (let c = 0, n = Math.floor(rnd(rc, 2, 4.9)); c < n; c++) {
+      const m = new THREE.Mesh(shard, M.crystal), sc = rnd(rc, 0.6, 1.3);
+      m.scale.set(sc, sc * rnd(rc, 0.8, 1.4), sc); m.position.set(rnd(rc, -0.2, 0.2), 0.3 * sc, rnd(rc, -0.2, 0.2));
+      m.rotation.set(rnd(rc, -0.45, 0.45), rnd(rc, 0, 3), rnd(rc, -0.45, 0.45)); cl.add(m);
+    }
+    scene.add(cl); placed++;
   }
-  // Physics: a box slightly inside the rounded outline keeps blocks from hovering past the edge.
+  for (let i = 0; i < 10; i++) {
+    const q = OUTLINE[Math.floor(rnd(rc, 0, N - 1))], s = rnd(rc, 0.55, 0.85), m = new THREE.Mesh(shard, M.crystal), sc = rnd(rc, 1, 2);
+    m.scale.set(sc, sc * 1.5, sc); m.position.set(q[0] * s, -T - rnd(rc, 0.3, 1.6), q[1] * s);
+    m.rotation.set(Math.PI + rnd(rc, -0.35, 0.35), rnd(rc, 0, 3), rnd(rc, -0.35, 0.35)); scene.add(m);
+  }
+
+  // Faint violet glow deep below the fragment.
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0x1a0f38, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+  glow.position.set(0, -26, -12); glow.scale.setScalar(60); glow.renderOrder = -10; scene.add(glow);
+
+  // Physics: flat static body, top at y = 0. A central box plus radial boxes
+  // that follow the irregular outline (cannon.js has no cheap convex hull).
   const body = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC });
-  body.addShape(new CANNON.Box(new CANNON.Vec3(7.5, 0.75, 6.6)));
-  body.position.set(0, -0.75, 0);
+  const radiusAt = (ang) => { let best = 0, bd = 9; OUTLINE.forEach(([x, z]) => { let d = Math.abs(Math.atan2(z, x) - ang); d = Math.min(d, Math.PI * 2 - d); if (d < bd) { bd = d; best = Math.hypot(x, z); } }); return best; };
+  body.addShape(new CANNON.Box(new CANNON.Vec3(5.6, T / 2, 4.9)), new CANNON.Vec3(0, -T / 2, 0));
+  const SEG = 24;
+  for (let i = 0; i < SEG; i++) {
+    const ang = i / SEG * Math.PI * 2, span = Math.PI * 2 / SEG;
+    let minR = 99; for (let k = -2; k <= 2; k++) minR = Math.min(minR, radiusAt(ang + span * k / 4));
+    const rOut = minR * 0.985 - 0.05, rIn = rOut * 0.5, half = (rOut - rIn) / 2, halfW = rOut * Math.tan(span / 2) * 0.98;
+    const mid = (rIn + rOut) / 2, q = new CANNON.Quaternion(); q.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -ang);
+    body.addShape(new CANNON.Box(new CANNON.Vec3(half, T / 2, halfW)), new CANNON.Vec3(Math.cos(ang) * mid, -T / 2, Math.sin(ang) * mid), q);
+  }
   world.addBody(body);
 })();
 
@@ -514,7 +705,7 @@ const cannon = (() => {
   return {
     get yaw() { return st.yaw; }, get el() { return st.el; },
     set(y, e) { st.yaw = clamp(y, -RULES.yawLim, RULES.yawLim); st.el = clamp(e, RULES.minEl, RULES.maxEl); apply(); },
-    reset() { this.set(0, RULES.defEl); st.charging = false; st.charge = 0; },
+    reset(el = RULES.defEl) { this.set(0, el); st.charging = false; st.charge = 0; },
     charge(on) { st.charging = on; },
     dir() { const y = st.yaw * DEG, p = st.el * DEG; return new THREE.Vector3(Math.sin(y) * Math.cos(p), Math.sin(p), -Math.cos(y) * Math.cos(p)); },
     muzzle() { root.updateMatrixWorld(true); const saved = barrel.position.z; barrel.position.z = 0; barrel.updateMatrixWorld(true); const v = pitch.localToWorld(new THREE.Vector3(0, 0, -1.95)); barrel.position.z = saved; return v; },
@@ -566,7 +757,11 @@ const fx = (() => {
       },
     };
   }
-  const sparks = particleSystem(0x33ebff, 0.16), dust = particleSystem(0x8c73d9, 0.24);
+  const sparks = particleSystem(0x33ebff, 0.16), dust = particleSystem(0x8c73d9, 0.24), trail = particleSystem(0x7399ff, 0.14);
+  // Flat rings that expand along the ground at the impact point.
+  const ringMat = new THREE.MeshBasicMaterial({ map: RING, color: 0x33ebff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide });
+  const grounds = Array.from({ length: 3 }, () => { const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), ringMat.clone()); m.rotation.x = -Math.PI / 2; m.renderOrder = 21; scene.add(m); return { m, t: 0, size: 1 }; });
+  let gi = 0;
   let lightLevel = 0, shakeT = 0, shakeD = 0, shakeA = 0;
   let slow = { on: false, left: 0, ramp: 0, scale: 1 };
   let lastDust = 0, dustFrame = 0;
@@ -580,6 +775,8 @@ const fx = (() => {
       sparks.emit(at, Math.round(10 + 26 * k), 4.5, 0.45, true);
       impactLight.position.copy(at).y += 0.4; lightLevel = Math.max(lightLevel, 3 * k);
     },
+    ground(at, radius) { const g = grounds[gi++ % 3]; g.m.position.set(at.x, Math.max(at.y - 0.2, 0.05), at.z); g.t = 0.55; g.size = radius * 2.6; },
+    trail(at) { trail.emit(at, 2, 0.2, 0.35, false); },
     muzzle(at) {
       const f = flashes[fi++ % 5]; f.s.position.copy(at); f.t = f.d = 0.14; f.size = 1.6;
       sparks.emit(at, 14, 4.5, 0.4, true);
@@ -589,20 +786,25 @@ const fx = (() => {
       if (dustFrame >= 2 || now - lastDust < 0.05) return;
       dustFrame++; lastDust = now; dust.emit(at, Math.round(6 + 12 * clamp(k, 0, 1)), 1.4, 0.6, false);
     },
-    shake(a, d) { if (a >= shakeA * (shakeT / Math.max(shakeD, 0.001))) { shakeA = a; shakeD = shakeT = d; } },
+    shake(a, d) { a *= TUNE.shake; if (a > 0.0001 && a >= shakeA * (shakeT / Math.max(shakeD, 0.001))) { shakeA = a; shakeD = shakeT = d; } },
     slowmo() { if (slow.on) return; slow = { on: true, left: RULES.slowDur, ramp: 0.25, scale: RULES.slowScale }; },
     stopSlow() { slow.on = false; },
-    reset() { lightLevel = 0; shakeT = 0; slow.on = false; for (const f of flashes.concat(shocks)) { f.t = 0; f.s.material.opacity = 0; } },
+    reset() { lightLevel = 0; shakeT = 0; slow.on = false; for (const f of flashes.concat(shocks)) { f.t = 0; f.s.material.opacity = 0; } for (const g of grounds) { g.t = 0; g.m.material.opacity = 0; } },
     update(dt) {
       dustFrame = 0;
       for (const f of flashes) if (f.t > 0) { f.t -= dt; const p = 1 - Math.max(0, f.t) / f.d; const s = f.size * (0.4 + 0.6 * (1 - (1 - p) * (1 - p))); f.s.scale.set(s, s, 1); f.s.material.opacity = Math.max(0, 1 - p); }
       for (const f of shocks) if (f.t > 0) { f.t -= dt; const p = 1 - Math.max(0, f.t) / f.d; const s = 0.2 + (f.size - 0.2) * (1 - (1 - p) * (1 - p)); f.s.scale.set(s, s, 1); f.s.material.opacity = 0.9 * Math.max(0, 1 - p); }
-      sparks.update(dt); dust.update(dt);
+      for (const g of grounds) if (g.t > 0) { g.t -= dt; const p = 1 - Math.max(0, g.t) / 0.55; const sc = 0.3 + (g.size - 0.3) * (1 - (1 - p) * (1 - p)); g.m.scale.set(sc, sc, 1); g.m.material.opacity = p < 0.27 ? 1 : Math.max(0, 1 - (p - 0.27) / 0.73); }
+      sparks.update(dt); dust.update(dt); trail.update(dt);
       lightLevel = Math.max(0, lightLevel - dt * 12); impactLight.intensity = lightLevel;
-      camera.position.copy(CAM_POS);
+      // Restrained cinematic follow: lean the view up to 18% toward the impact.
+      const goal = CAM_BASE_LOOK.clone();
+      if (camFollow) goal.add(camFollow.clone().setY(clamp(camFollow.y, -1, 4)).sub(CAM_BASE_LOOK).multiplyScalar(0.18));
+      CAM_LOOK.lerp(goal, 1 - Math.exp(-dt * 2.5));
+      camera.position.copy(CAM_POS); camera.lookAt(CAM_LOOK);
       if (shakeT > 0) {
         shakeT = Math.max(0, shakeT - dt); const a = shakeA * shakeT / Math.max(shakeD, 0.001);
-        camera.position.x += (Math.random() * 2 - 1) * a; camera.position.y += (Math.random() * 2 - 1) * a;
+        camera.translateX((Math.random() * 2 - 1) * a); camera.translateY((Math.random() * 2 - 1) * a);
         if (shakeT === 0) shakeA = 0;
       }
       if (slow.on) {
@@ -704,6 +906,28 @@ let shotsUsed = 0, shotStart = 0, failAt = 0, simTime = 0, stabilized = true;
 let currentOrb = null, displacedThisShot = 0, collapsedThisShot = false, paused = false, token = 0;
 const contacts = [];
 const boxGeoCache = {};
+let lastCollision = 0, suppThisShot = 0, trailCount = 0;
+function blockGeometry(spec) {
+  const [w, h, d] = spec.s, key = spec.k + spec.s.join("x");
+  if (boxGeoCache[key]) return boxGeoCache[key];
+  let geo;
+  if (spec.k === "wedge") {
+    const sh = new THREE.Shape([new THREE.Vector2(-w / 2, -h / 2), new THREE.Vector2(w / 2, -h / 2), new THREE.Vector2(0, h / 2)]);
+    geo = new THREE.ExtrudeGeometry(sh, { depth: d, bevelEnabled: false }); geo.translate(0, 0, -d / 2);
+  } else geo = new THREE.BoxGeometry(w, h, d);
+  return (boxGeoCache[key] = geo);
+}
+function blockShape(spec) {
+  const [w, h, d] = spec.s;
+  if (spec.k !== "wedge") return new CANNON.Box(new CANNON.Vec3(w / 2, h / 2, d / 2));
+  const V = (x, y, z) => new CANNON.Vec3(x, y, z);
+  const pts = [V(-w / 2, -h / 2, -d / 2), V(w / 2, -h / 2, -d / 2), V(0, h / 2, -d / 2), V(-w / 2, -h / 2, d / 2), V(w / 2, -h / 2, d / 2), V(0, h / 2, d / 2)];
+  return new CANNON.ConvexPolyhedron(pts, [[3, 4, 5], [0, 2, 1], [0, 1, 4, 3], [1, 2, 5, 4], [0, 3, 5, 2]]);
+}
+const blockVolume = (spec) => spec.s[0] * spec.s[1] * spec.s[2] * (spec.k === "wedge" ? 0.5 : 1);
+// Load-bearing columns are denser so stacks never sit heavy-on-light (mirrors BlockKind.densityMultiplier).
+const DENSITY = { standard: 1, beam: 0.75, column: 2.5, heavy: 1, wedge: 0.8, energy: 1.2 };
+const blockMass = (spec) => Math.max(0.12, (spec.k === "heavy" ? TUNE.heavyMass : TUNE.stdMass) * DENSITY[spec.k] * blockVolume(spec) / 0.512);
 
 function clearLevel() {
   for (const b of blocks) { scene.remove(b.mesh); world.removeBody(b.body); }
@@ -715,27 +939,27 @@ function loadLevel(i) {
   levelIndex = i; level = LEVELS[i]; token++;
   clearLevel(); fx.reset();
   world.gravity.set(0, level.gravity, 0);
+  frameLevel(level);
   const [ox, oy, oz] = level.origin;
+  energyCircle.position.set(ox, 0.012, oz);
   for (const spec of level.blocks) {
-    const [w, h, d] = spec.s, key = spec.s.join("x");
-    const geo = boxGeoCache[key] || (boxGeoCache[key] = new THREE.BoxGeometry(w, h, d));
-    const mesh = new THREE.Mesh(geo, blockMaterial(spec.k, spec.t));
+    const mesh = new THREE.Mesh(blockGeometry(spec), blockMaterial(spec.k, spec.t));
     mesh.castShadow = mesh.receiveShadow = true;
-    const vol = (w * h * d) / 0.729, mass = TUNE.blockMass * (spec.k === "heavy" ? TUNE.heavyMul : 1) * Math.max(0.5, vol);
-    const body = new CANNON.Body({ mass, shape: new CANNON.Box(new CANNON.Vec3(w / 2, h / 2, d / 2)) });
+    const body = new CANNON.Body({ mass: blockMass(spec), shape: blockShape(spec) });
     body.position.set(ox + spec.c[0], oy + spec.c[1], oz + spec.c[2]);
+    if (spec.yaw) body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spec.yaw);
     body.linearDamping = body.angularDamping = TUNE.stab;
     body.sleepSpeedLimit = 0.08; body.sleepTimeLimit = 0.6;
-    const b = { mesh, body, spec, start: body.position.clone(), removed: false, displaced: false, gone: false };
+    const b = { mesh, body, spec, start: body.position.clone(), removed: false, displaced: false, gone: false, trail: false };
     body.addEventListener("collide", (e) => {
       const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
-      if (v > 1.2) contacts.push({ kind: "block", v, at: e.contact.bi.position.vadd(e.contact.ri) });
+      if (v > 1.2) contacts.push({ kind: "block", v, mass: body.mass, at: e.contact.bi.position.vadd(e.contact.ri) });
     });
     world.addBody(body); scene.add(mesh); blocks.push(b);
   }
-  stabilized = true;
+  stabilized = true; lastCollision = 0; suppThisShot = 0; trailCount = 0;
   shotsUsed = 0; simTime = 0; displacedThisShot = 0; collapsedThisShot = false; paused = false;
-  cannon.reset(); phase = "aiming"; aiming = false;
+  cannon.reset(level.el || RULES.defEl); phase = "aiming"; aiming = false;
   showHUD(true); renderHUD(); updateTrajectory(0.35); hideOverlay();
 }
 const targetCount = () => blocks.filter((b) => b.spec.t).length;
@@ -759,15 +983,15 @@ function fire() {
   body.position.set(origin.x, origin.y, origin.z);
   body.velocity.set(dir.x * TUNE.launch, dir.y * TUNE.launch, dir.z * TUNE.launch);
   body.linearDamping = 0.02; body.angularDamping = 0.3; body.allowSleep = false;
-  const orb = { mesh, body, born: simTime, hits: 0, history: [] };
+  const orb = { mesh, body, born: simTime, hits: 0, history: [], dir: dir.clone(), supp: 0, lastSupp: -1e9 };
   body.addEventListener("collide", (e) => {
     const other = e.body, v = Math.abs(e.contact.getImpactVelocityAlongNormal());
-    contacts.push({ kind: other.mass > 0 ? "orb-block" : "orb-ground", orb, v, mass: other.mass, at: e.contact.bi.position.vadd(e.contact.ri) });
+    contacts.push({ kind: other.mass > 0 ? "orb-block" : "orb-ground", orb, other, v, mass: other.mass, at: e.contact.bi.position.vadd(e.contact.ri) });
   });
   world.addBody(body); orbs.push(orb); currentOrb = orb;
   cannon.fire(); fx.muzzle(origin); fx.shake(0.05, 0.18);
   audio.play("launch"); buzz(15);
-  traj.hide(); displacedThisShot = 0; collapsedThisShot = false;
+  traj.hide(); displacedThisShot = 0; collapsedThisShot = false; suppThisShot = 0; lastCollision = simTime;
   $("hint").hidden = true; renderHUD();
 }
 function removeOrb(o) { scene.remove(o.mesh); world.removeBody(o.body); orbs = orbs.filter((x) => x !== o); }
@@ -778,7 +1002,15 @@ function processContacts() {
     if (c.kind === "orb-block") {
       const first = c.orb.hits === 0, impulse = c.v * Math.min(TUNE.orbMass, c.mass);
       if (!first && impulse < 6) continue;
-      c.orb.hits++;
+      c.orb.hits++; lastCollision = simTime;
+      // Supplemental destruction impulse: per-orb cooldown and cap.
+      if (c.orb.supp < RULES.maxSupp && simTime - c.orb.lastSupp >= RULES.suppCooldown) {
+        c.orb.supp++; c.orb.lastSupp = simTime; suppThisShot++;
+        const vel = c.orb.body.velocity, travel = vel.length() > 2 ? new THREE.Vector3(vel.x, vel.y, vel.z) : c.orb.dir.clone();
+        directHit(c.other, c.orb.dir, impulse); radialImpulse(at, travel);
+        fx.ground(at, TUNE.radius);
+        if (first) camFollow = at.clone();
+      }
       const k = Math.max(clamp(impulse / 40, 0, 1), first ? 0.6 : 0);
       fx.impact(at, k); audio.play("impact", 0.4 + 0.6 * k, 0.08);
       if (first) fx.shake(0.06 + 0.06 * k, 0.25);
@@ -786,10 +1018,35 @@ function processContacts() {
     } else if (c.kind === "orb-ground") {
       if (c.v > 2) { fx.dust(at, 0.5, simTime); audio.play("hit", 0.35, 0.1); }
     } else if (c.v > 2) {
+      if (phase === "resolving" && c.v * c.mass > 2.5) lastCollision = simTime;
       const k = clamp(c.v / 8, 0, 1);
       fx.dust(at, k, simTime); audio.play("hit", 0.15 + 0.45 * k, 0.06);
     }
   }
+}
+
+// Radial impulse around an impact (mirrors StructureManager.applyRadialImpulse).
+function radialImpulse(center, shotDir) {
+  const fwd = new THREE.Vector3(shotDir.x, 0, shotDir.z); if (fwd.length() < 0.001) fwd.set(0, 0, -1); fwd.normalize();
+  const R = Math.max(0.1, TUNE.radius);
+  for (const b of blocks) {
+    if (b.gone || b.removed) continue;
+    const p = b.body.position, off = new THREE.Vector3(p.x - center.x, p.y - center.y, p.z - center.z), dist = off.length();
+    if (dist >= R) continue;
+    const fall = (1 - dist / R) ** 2;
+    const radial = new THREE.Vector3(off.x, 0, off.z); if (radial.length() < 0.001) radial.copy(fwd); radial.normalize();
+    const bias = clamp(TUNE.fwdBias, 0, 1), hor = radial.multiplyScalar(1 - bias).addScaledVector(fwd, bias); if (hor.length() < 0.001) hor.copy(fwd); hor.normalize();
+    const upc = clamp(TUNE.vertical, 0, 1), dir = hor.multiplyScalar(1 - upc).add(new THREE.Vector3(0, upc, 0)).normalize();
+    const mag = Math.min(TUNE.radial * fall * b.body.mass, TUNE.maxSupp);
+    if (mag < 0.01) continue;
+    b.body.wakeUp();
+    b.body.applyImpulse(new CANNON.Vec3(dir.x * mag, dir.y * mag, dir.z * mag), new CANNON.Vec3(p.x, p.y + 0.05, p.z));
+  }
+}
+function directHit(body, dir, impulse) {
+  if (!body || TUNE.impulseMul <= 1) return;
+  const extra = Math.min((TUNE.impulseMul - 1) * impulse, TUNE.maxSupp), d = dir.clone().normalize();
+  body.wakeUp(); body.applyImpulse(new CANNON.Vec3(d.x * extra, d.y * extra, d.z * extra), body.position);
 }
 
 function updateBlocks() {
@@ -798,14 +1055,20 @@ function updateBlocks() {
     if (b.gone) continue;
     const p = b.body.position;
     b.mesh.position.set(p.x, p.y, p.z); b.mesh.quaternion.set(b.body.quaternion.x, b.body.quaternion.y, b.body.quaternion.z, b.body.quaternion.w);
+    const sp = b.body.velocity.length();
+    if (sp > TUNE.maxV) b.body.velocity.scale(TUNE.maxV / sp, b.body.velocity);
+    if (sp > RULES.trailSpeed && !b.trail && trailCount < RULES.maxTrails) { b.trail = true; trailCount++; }
+    if (b.trail) { if (sp < RULES.trailSpeed * 0.5) { b.trail = false; trailCount--; } else fx.trail(b.mesh.position); }
     if (!b.displaced && p.distanceTo(b.start) > RULES.displaced) { b.displaced = true; if (b.spec.t) { displacedThisShot++; } }
     if (!b.removed && (p.y < RULES.removalY || Math.abs(p.x) > RULES.half || Math.abs(p.z) > RULES.half)) { b.removed = true; changed = true; }
-    if (p.y < RULES.fadeY) {
-      const t = clamp((RULES.fadeY - p.y) / (RULES.fadeY - RULES.cleanupY), 0, 1);
+    // Abyss cleanup (mirrors AbyssCleanupManager): fade deep below or far away, then remove.
+    const depth = -p.y, horiz = Math.hypot(p.x, p.z), hStart = Math.max(TUNE.platW, TUNE.platD) * 1.6;
+    const t = Math.max(clamp((depth - TUNE.fadeDepth) / (TUNE.cleanupDepth - TUNE.fadeDepth), 0, 1), clamp((horiz - hStart) / (RULES.far - hStart), 0, 1));
+    if (t > 0) {
       if (!b.mesh.material.userData.clone) { b.mesh.material = b.mesh.material.clone(); b.mesh.material.transparent = true; b.mesh.material.userData.clone = true; }
       b.mesh.material.opacity = 1 - t; b.mesh.scale.setScalar(1 - 0.6 * t);
     }
-    if (p.y < RULES.cleanupY || Math.abs(p.x) > 60 || Math.abs(p.z) > 60) { b.gone = true; scene.remove(b.mesh); world.removeBody(b.body); }
+    if (t >= 1 || depth >= TUNE.cleanupDepth || horiz >= RULES.far) { b.gone = true; if (b.trail) { b.trail = false; trailCount--; } scene.remove(b.mesh); world.removeBody(b.body); }
   }
   if (phase === "resolving" && !collapsedThisShot && displacedThisShot >= Math.ceil(targetCount() * RULES.slowFrac)) {
     collapsedThisShot = true; fx.slowmo(); fx.shake(0.1, 0.5); audio.play("collapse", 0.9); buzz(25);
@@ -826,7 +1089,7 @@ function updateOrbs(dt) {
   for (const o of orbs.slice()) {
     const p = o.body.position;
     o.mesh.position.set(p.x, p.y, p.z); o.mesh.userData.spin(dt);
-    if (p.y < -18 || simTime - o.born > RULES.orbLife) removeOrb(o);
+    if (p.y < RULES.orbCleanupY || simTime - o.born > RULES.orbLife) removeOrb(o);
   }
   // Trail behind the most recent orb.
   const o = currentOrb && orbs.includes(currentOrb) ? currentOrb : null;
@@ -840,11 +1103,12 @@ function updateOrbs(dt) {
 function updateGame() {
   if (phase === "resolving") {
     const prog = progressFrac(), el = simTime - shotStart;
-    const done = el >= RULES.maxResolve || (el >= RULES.minResolve && (prog >= level.threshold || (orbResolved() && settled())));
+    const quiet = simTime - lastCollision >= RULES.quiet;
+    const done = el >= RULES.maxResolve || (el >= RULES.minResolve && (prog >= level.threshold || (orbResolved() && quiet && settled())));
     if (!done) return;
     if (prog >= level.threshold) win();
     else if (shotsUsed >= level.shots) { phase = "failing"; failAt = simTime + RULES.failDelay; }
-    else { phase = "aiming"; currentOrb = null; updateTrajectory(0.35); renderHUD(); }
+    else { phase = "aiming"; currentOrb = null; camFollow = null; updateTrajectory(0.35); renderHUD(); }
   } else if (phase === "failing") {
     if (progressFrac() >= level.threshold) win();
     else if (simTime >= failAt) lose();
@@ -857,7 +1121,7 @@ function win() {
   progress.unlocked = Math.max(progress.unlocked, Math.min(levelIndex + 1, LEVELS.length - 1));
   store.set(progress);
   const t = token;
-  setTimeout(() => { if (t !== token) return; audio.play("victory"); buzz([20, 40, 20]); showVictory(stars); }, 600);
+  setTimeout(() => { if (t !== token) return; audio.play("victory"); buzz([20, 40, 20]); showVictory(stars); }, RULES.victoryDelay * 1000);
 }
 function lose() { phase = "failed"; traj.hide(); audio.play("failure"); showFailure(progressFrac()); }
 
@@ -895,9 +1159,14 @@ function renderHUD() {
   $("lvlNum").textContent = `LEVEL ${levelIndex + 1}`;
   $("lvlName").textContent = level.name.toUpperCase();
   $("shots").innerHTML = Array.from({ length: level.shots }, (_, i) => `<span class="shot${i < level.shots - shotsUsed ? " on" : ""}"></span>`).join("");
-  const p = progressFrac();
-  $("pct").textContent = `${Math.round(p * 100)}% / ${Math.round(level.threshold * 100)}%`;
-  $("pct").className = p >= level.threshold ? "met" : "";
+  const p = progressFrac(), pct = Math.round(p * 100), el = $("pct");
+  if (el.dataset.v !== String(pct)) {
+    const rising = Number(el.dataset.v || 0) < pct;
+    el.dataset.v = String(pct); el.textContent = `DESTRUCTION: ${pct}%`;
+    if (rising) { el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse"); }
+  }
+  el.classList.toggle("met", p >= level.threshold);
+  $("tgt").textContent = `TARGET ${Math.round(level.threshold * 100)}%`;
   $("fill").style.width = `${Math.max(2, Math.min(100, p * 100))}%`;
   $("mark").style.left = `${level.threshold * 100}%`;
 }
@@ -988,6 +1257,6 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Test hook for automated checks (no effect on play).
-window.__cd = { loadLevel, fire, state: () => ({ phase, shotsUsed, progress: progressFrac(), level: level && level.id, blocks: blocks.length }), aim: (y, e) => { cannon.set(y, e); updateTrajectory(1); } };
+window.__cd = { disp: () => ({ orb: currentOrb && [currentOrb.body.position.x, currentOrb.body.position.y, currentOrb.body.position.z].map((v) => +v.toFixed(2)), hits: currentOrb && currentOrb.hits, moved: blocks.filter((b) => b.body.position.distanceTo(b.start) > 0.1).map((b) => b.spec.k + ' ' + b.body.position.distanceTo(b.start).toFixed(2)) }), dbg: () => blocks.filter((b) => !b.gone && b.body.velocity.length() > 0.05).map((b) => b.spec.k + ':' + b.body.velocity.length().toFixed(2) + '@' + [b.body.position.x, b.body.position.y, b.body.position.z].map((v) => v.toFixed(2)).join(',') + ' start ' + [b.start.x, b.start.y, b.start.z].map((v) => v.toFixed(2)).join(',')), loadLevel, fire, state: () => ({ phase, shotsUsed, progress: progressFrac(), level: level && level.id, blocks: blocks.length, supp: suppThisShot, trails: trailCount, moving: blocks.filter((b) => !b.gone && b.body.velocity.length() > 0.05).length, gone: blocks.filter((b) => b.gone).length }), aim: (y, e) => { cannon.set(y, e); updateTrajectory(1); } };
 })();
 </script>

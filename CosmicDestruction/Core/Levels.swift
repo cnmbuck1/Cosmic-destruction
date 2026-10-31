@@ -62,7 +62,8 @@ enum Levels {
             victoryThreshold: 0.8,
             starShotThresholds: [1, 2, 3],
             structureOrigin: [0, 0, -4.2],
-            blocks: b.blocks
+            blocks: b.blocks,
+            defaultElevation: 20
         )
     }()
 
@@ -133,7 +134,8 @@ enum Levels {
             victoryThreshold: 0.8,
             starShotThresholds: [1, 2, 3],
             structureOrigin: [0, 0, -4.2],
-            blocks: b.blocks
+            blocks: b.blocks,
+            defaultElevation: 14
         )
     }()
 
@@ -152,10 +154,11 @@ enum Levels {
         }
         let floor: Float = g + 0.4
 
-        // Four support columns, two pieces each.
+        // Four support columns, two pieces each, centered under the deck beams
+        // so each beam's center of mass sits over its supports.
         var columnTop: Float = 0
         for x in [-1.6, 1.6] as [Float] {
-            for z in [-0.9, 0.9] as [Float] {
+            for z in [-0.6, 0.6] as [Float] {
                 let lower = b.put(.column, [0.45, 1.0, 0.45], x: x, z: z, base: floor)
                 columnTop = b.put(.column, [0.45, 1.0, 0.45], x: x, z: z, base: lower)
             }
@@ -198,7 +201,8 @@ enum Levels {
             starShotThresholds: [1, 2, 3],
             structureOrigin: [0, 0, -4.4],
             blocks: b.blocks,
-            cameraPullBack: 0.8
+            cameraPullBack: 0.8,
+            defaultElevation: 17
         )
     }()
 }

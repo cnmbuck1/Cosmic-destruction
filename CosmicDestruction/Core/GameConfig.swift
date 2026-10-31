@@ -58,8 +58,8 @@ struct DestructionPhysicsConfig: Equatable {
     // MARK: Camera
     var cameraElevation: Float = 7.6
     /// Distance from the cannon back to the camera along +Z.
-    var cameraDistance: Float = 5.4
-    var cameraFieldOfView: Float = 56
+    var cameraDistance: Float = 4.2
+    var cameraFieldOfView: Float = 60
     var cameraShakeIntensity: Float = 1
 }
 

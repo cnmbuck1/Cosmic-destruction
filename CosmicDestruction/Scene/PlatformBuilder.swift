@@ -53,13 +53,11 @@ enum PlatformBuilder {
             let t = Float(i) / Float(segmentCount) * 2 * .pi
             let c = cos(t), s = sin(t)
             let r = 1 / pow(pow(abs(c) / a, n) + pow(abs(s) / b, n), 1 / n)
-            var k: Float = 1
-                + 0.035 * sin(3 * t + phases[0])
-                + 0.025 * sin(5 * t + phases[1])
-                + 0.018 * sin(9 * t + phases[2])
-                + 0.012 * sin(17 * t + phases[3])
-                + 0.03 * jitter[i]
-                - 0.04
+            let h1: Float = 0.035 * sin(3 * t + phases[0])
+            let h2: Float = 0.025 * sin(5 * t + phases[1])
+            let h3: Float = 0.018 * sin(9 * t + phases[2])
+            let h4: Float = 0.012 * sin(17 * t + phases[3])
+            var k: Float = 0.96 + h1 + h2 + h3 + h4 + 0.03 * jitter[i]
             for (angle, width, depth) in bites {
                 var delta = abs(t - angle)
                 delta = min(delta, 2 * .pi - delta)
@@ -113,10 +111,10 @@ enum PlatformBuilder {
         edge *= smoothstep(1.4, 2.4, simd_distance(p, cannonXZ))
         guard edge > 0 else { return 0 }
         let x = p.x, z = p.y
-        var h: Float = 0.09 * sin(0.9 * x + 1.3) * sin(0.8 * z + 0.4)
-            + 0.06 * sin(2.1 * x - 1.7 * z + 2.0)
-            + 0.035 * sin(4.3 * x + 3.1 * z + 0.7)
-            + 0.04
+        let n1: Float = 0.09 * sin(0.9 * x + 1.3) * sin(0.8 * z + 0.4)
+        let n2: Float = 0.06 * sin(2.1 * x - 1.7 * z + 2.0)
+        let n3: Float = 0.035 * sin(4.3 * x + 3.1 * z + 0.7)
+        var h: Float = n1 + n2 + n3 + 0.04
         for crater in craters {
             let d = simd_distance(p, crater.center) / crater.radius
             if d < 1 {

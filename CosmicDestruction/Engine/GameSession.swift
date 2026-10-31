@@ -181,7 +181,7 @@ final class GameSession: ObservableObject, AimInputDelegate {
         effects.shakeIntensity = tuning.cameraShakeIntensity
         structure.build(level: level, tuning: tuning)
         gameManager.start(level: level)
-        cannon.resetAim()
+        cannon.resetAim(elevationDegrees: level.defaultElevation)
 
         currentOrb = nil
         isDragging = false

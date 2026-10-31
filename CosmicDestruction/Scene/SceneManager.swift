@@ -67,7 +67,10 @@ final class SceneManager {
         let cannon = GameRules.cannonPosition
         cameraRig.simdPosition = SIMD3<Float>(0, config.cameraElevation + pull * 0.45,
                                               cannon.z + config.cameraDistance + pull)
-        baseLookTarget = SIMD3<Float>(origin.x, 0.7, origin.z - 0.6)
+        // Looking at a point in front of the structure tilts the view down
+        // (about 32°): structure in the upper third, cannon below, and the
+        // fragment's front edge with the void beneath it at the bottom.
+        baseLookTarget = SIMD3<Float>(origin.x, 0, origin.z + 2.4)
         currentLook = baseLookTarget
         followTarget = nil
         followWeight = 0
@@ -139,7 +142,7 @@ final class SceneManager {
         // A faint violet glow deep below the fragment gives the void depth.
         let glow = SCNPlane(width: 60, height: 60)
         let glowMat = MaterialLibrary.glow(MaterialLibrary.shared.glowImage)
-        glowMat.multiply.contents = UIColor(red: 0.22, green: 0.12, blue: 0.45, alpha: 1)
+        glowMat.multiply.contents = UIColor(red: 0.1, green: 0.06, blue: 0.22, alpha: 1)
         glow.materials = [glowMat]
         let glowNode = SCNNode(geometry: glow)
         glowNode.position = SCNVector3(x: 0, y: -26, z: -12)

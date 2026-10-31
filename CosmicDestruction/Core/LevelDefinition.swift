@@ -16,6 +16,19 @@ enum BlockKind: String, CaseIterable {
     case energy
 
     var isHeavy: Bool { self == .heavy }
+
+    /// Density relative to the configured standard/heavy mass. Load-bearing
+    /// columns are denser so stacks never sit heavy-on-light (which makes
+    /// iterative physics solvers jitter).
+    var densityMultiplier: Float {
+        switch self {
+        case .standard, .heavy: return 1
+        case .beam: return 0.75
+        case .column: return 2.5
+        case .wedge: return 0.8
+        case .energy: return 1.2
+        }
+    }
 }
 
 /// One component in a hand-authored structure. Positions are centers in
@@ -57,6 +70,9 @@ struct LevelDefinition: Identifiable, Equatable {
     let blocks: [BlockSpec]
     /// Extra camera pull-back for wide structures (meters).
     var cameraPullBack: Float = 0
+    /// Starting cannon elevation, chosen so an un-aimed first shot still
+    /// strikes the structure instead of sailing through an opening.
+    var defaultElevation: Float = GameRules.defaultElevationDegrees
 
     var targetBlockCount: Int { blocks.filter(\.isTarget).count }
 

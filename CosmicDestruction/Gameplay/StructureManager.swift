@@ -143,7 +143,7 @@ final class StructureManager {
 
     static func mass(for spec: BlockSpec, tuning: PhysicsTuning) -> Float {
         let density = spec.kind.isHeavy ? tuning.heavyBlockMass : tuning.standardBlockMass
-        return max(0.12, density * spec.volume / referenceVolume)
+        return max(0.12, density * spec.kind.densityMultiplier * spec.volume / referenceVolume)
     }
 
     private func apply(tuning: PhysicsTuning, to block: Block) {

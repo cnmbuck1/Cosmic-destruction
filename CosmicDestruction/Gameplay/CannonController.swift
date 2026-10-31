@@ -38,8 +38,8 @@ final class CannonController {
         applyAim()
     }
 
-    func resetAim() {
-        setAim(yawDegrees: 0, elevationDegrees: GameRules.defaultElevationDegrees)
+    func resetAim(elevationDegrees elevation: Float = GameRules.defaultElevationDegrees) {
+        setAim(yawDegrees: 0, elevationDegrees: elevation)
         isCharging = false
         charge = 0
     }
