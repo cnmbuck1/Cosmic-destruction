@@ -51,9 +51,23 @@ final class MaterialLibrary {
 
     // MARK: Platform
 
+    /// Cratered lunar rock with sparse glowing fractures (no grid or rings).
     lazy var platformTop: SCNMaterial = {
-        let m = Self.pbr(diffuse: ProceduralTextures.lunarSurfaceDiffuse(), metalness: 0.15, roughness: 0.85,
-                         emission: ProceduralTextures.lunarSurfaceEmission(), emissionIntensity: 1.4)
+        let m = Self.pbr(diffuse: ProceduralTextures.lunarSurfaceDiffuse(), metalness: 0.05, roughness: 0.92,
+                         emission: ProceduralTextures.lunarSurfaceEmission(), emissionIntensity: 1.2)
+        m.normal.contents = ProceduralTextures.lunarSurfaceNormal()
+        m.normal.intensity = 0.8
+        return m
+    }()
+
+    /// Layered strata for the fragment's sides and underside.
+    lazy var platformStrata: SCNMaterial = {
+        let m = Self.pbr(diffuse: ProceduralTextures.strataDiffuse(), metalness: 0.05, roughness: 0.95,
+                         emission: ProceduralTextures.strataEmission(), emissionIntensity: 1.1)
+        for prop in [m.diffuse, m.emission] {
+            prop.wrapS = .repeat
+            prop.wrapT = .repeat
+        }
         return m
     }()
 
@@ -61,15 +75,25 @@ final class MaterialLibrary {
         diffuse: UIColor(red: 0.07, green: 0.07, blue: 0.1, alpha: 1), metalness: 0.1, roughness: 0.95)
 
     lazy var rimCyan: SCNMaterial = {
-        let m = Self.pbr(diffuse: UIColor.black, metalness: 0, roughness: 1, emission: Palette.cyan, emissionIntensity: 2.2)
+        let m = SCNMaterial()
+        m.lightingModel = .constant
+        m.diffuse.contents = UIColor.black
+        m.emission.contents = Palette.cyan
+        m.emission.intensity = 1.8
+        m.isDoubleSided = true
         return m
     }()
 
-    lazy var rimPurple: SCNMaterial = Self.pbr(diffuse: UIColor.black, metalness: 0, roughness: 1,
-                                               emission: Palette.purple, emissionIntensity: 1.6)
+    lazy var crystal: SCNMaterial = Self.pbr(diffuse: UIColor(red: 0.16, green: 0.08, blue: 0.3, alpha: 1),
+                                             metalness: 0.3, roughness: 0.2, emission: Palette.purple, emissionIntensity: 0.9)
 
-    lazy var crystal: SCNMaterial = Self.pbr(diffuse: UIColor(red: 0.2, green: 0.1, blue: 0.35, alpha: 1),
-                                             metalness: 0.3, roughness: 0.2, emission: Palette.purple, emissionIntensity: 1.2)
+    /// Additive ring pattern drawn under the structure.
+    lazy var energyCircle: SCNMaterial = {
+        let m = Self.glow(ProceduralTextures.energyCircle())
+        m.multiply.contents = UIColor(red: 0.35, green: 0.85, blue: 1.0, alpha: 1)
+        m.readsFromDepthBuffer = true
+        return m
+    }()
 
     // MARK: Blocks
 
@@ -79,34 +103,52 @@ final class MaterialLibrary {
         let key = "\(kind.rawValue)-\(isTarget)"
         if let cached = blockMaterials[key] { return cached }
         let m: SCNMaterial
+        // Structural pieces read as dark machined metal and stone with no glow
+        // (build sheet 2.0 §3.3); only energy cores emit light.
         switch (kind, isTarget) {
         case (_, false):
             // Decorative foundation: muted, no glow, so targets stand out.
             m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
-                base: UIColor(red: 0.1, green: 0.1, blue: 0.13, alpha: 1),
+                base: UIColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 1),
                 edge: UIColor(white: 0.2, alpha: 1), seam: UIColor(white: 0.05, alpha: 1), seed: 4),
                 metalness: 0.4, roughness: 0.75)
         case (.standard, true):
             m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
-                base: UIColor(red: 0.3, green: 0.33, blue: 0.4, alpha: 1),
-                edge: UIColor(red: 0.55, green: 0.62, blue: 0.72, alpha: 1),
-                seam: UIColor(red: 0.16, green: 0.18, blue: 0.24, alpha: 1), seed: 1),
-                metalness: 0.55, roughness: 0.45,
-                emission: ProceduralTextures.blockEmission(color: Palette.cyan, strong: false), emissionIntensity: 0.6)
+                base: UIColor(red: 0.3, green: 0.32, blue: 0.37, alpha: 1),
+                edge: UIColor(red: 0.5, green: 0.55, blue: 0.62, alpha: 1),
+                seam: UIColor(red: 0.16, green: 0.17, blue: 0.21, alpha: 1), seed: 1),
+                metalness: 0.6, roughness: 0.42)
+        case (.beam, true):
+            m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
+                base: UIColor(red: 0.24, green: 0.26, blue: 0.31, alpha: 1),
+                edge: UIColor(red: 0.62, green: 0.66, blue: 0.72, alpha: 1),
+                seam: UIColor(red: 0.12, green: 0.13, blue: 0.17, alpha: 1), seed: 5),
+                metalness: 0.8, roughness: 0.3)
+        case (.column, true):
+            m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
+                base: UIColor(red: 0.36, green: 0.36, blue: 0.4, alpha: 1),
+                edge: UIColor(red: 0.58, green: 0.58, blue: 0.64, alpha: 1),
+                seam: UIColor(red: 0.2, green: 0.2, blue: 0.24, alpha: 1), seed: 6),
+                metalness: 0.5, roughness: 0.5)
         case (.heavy, true):
             m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
-                base: UIColor(red: 0.12, green: 0.12, blue: 0.16, alpha: 1),
-                edge: UIColor(red: 0.3, green: 0.28, blue: 0.38, alpha: 1),
+                base: UIColor(red: 0.12, green: 0.12, blue: 0.15, alpha: 1),
+                edge: UIColor(red: 0.28, green: 0.27, blue: 0.34, alpha: 1),
                 seam: UIColor(red: 0.05, green: 0.05, blue: 0.07, alpha: 1), seed: 2),
-                metalness: 0.75, roughness: 0.35,
-                emission: ProceduralTextures.blockEmission(color: Palette.purple, strong: false), emissionIntensity: 0.8)
+                metalness: 0.8, roughness: 0.35)
+        case (.wedge, true):
+            m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
+                base: UIColor(red: 0.27, green: 0.25, blue: 0.33, alpha: 1),
+                edge: UIColor(red: 0.5, green: 0.46, blue: 0.62, alpha: 1),
+                seam: UIColor(red: 0.14, green: 0.12, blue: 0.2, alpha: 1), seed: 7),
+                metalness: 0.65, roughness: 0.38)
         case (.energy, true):
             m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
                 base: UIColor(red: 0.1, green: 0.14, blue: 0.22, alpha: 1),
                 edge: UIColor(red: 0.3, green: 0.6, blue: 0.75, alpha: 1),
                 seam: UIColor(red: 0.08, green: 0.1, blue: 0.16, alpha: 1), seed: 3),
                 metalness: 0.5, roughness: 0.3,
-                emission: ProceduralTextures.blockEmission(color: Palette.cyan, strong: true), emissionIntensity: 2.0)
+                emission: ProceduralTextures.blockEmission(color: Palette.cyan, strong: true), emissionIntensity: 2.2)
         }
         blockMaterials[key] = m
         return m

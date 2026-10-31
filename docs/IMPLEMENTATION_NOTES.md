@@ -1,4 +1,50 @@
-# Implementation notes: prototype v0.1.0
+# Implementation notes
+
+## Build sheet 2.0 (v0.2.0)
+
+Goal: destroying futuristic structures on a moon suspended over an endless
+void, not shooting blocks on a circular board.
+
+- **Destruction physics.** `DestructionPhysicsConfig` (Core/GameConfig.swift)
+  holds every tunable value. On a significant orb hit, `GameSession` triggers a
+  supplemental radial impulse (`StructureManager.applyRadialImpulse`) with
+  quadratic distance falloff, a forward bias along the shot, an upward
+  component, impulses scaled by block mass, and a hard clamp. It fires at most
+  twice per orb, with a 0.3 s cooldown. The struck block also gets an extra
+  push (`orbImpulseMultiplier`). Block speed is clamped every frame.
+- **No invisible walls.** `AbyssCleanupManager` lets debris fall freely. It
+  fades it between 4 m and 22 m below the platform (or very far sideways) and
+  removes it only once it is fully faded.
+- **Components.** standard, beam, column, heavy, wedge (triangular prism with
+  a convex-hull body), and energy. Only energy cores glow. Columns are 2.5x
+  denser so stacks never sit heavy-on-light, which makes solvers jitter.
+- **Levels.** Lunar Gateway (21 pieces), Twin Spires (31), Orbital Citadel
+  (37). All were checked for stability with a headless cannon.js simulation
+  over 8 s at both stabilizer damping and zero damping (max drift under 6 cm).
+  Each level has a `defaultElevation`, so an un-aimed first shot hits the
+  structure instead of flying through the gate or under the deck.
+- **Lunar fragment.** `PlatformBuilder` builds an 18 x 16 m fragment from
+  custom meshes: an irregular outline (harmonic noise plus bites), a top
+  surface that is exactly flat over the play area and cratered in the outer
+  band, stacked strata rows, and a tapering rocky root under the island.
+  Neon is limited to broken cyan edge accents, sparse fractures and veins,
+  crystals, and the energy circle under the structure. Physics is a flat
+  convex slab with its top at y = 0.
+- **Camera.** It sits behind and above the cannon, tilted about 32 degrees
+  down. The structure is in the upper third and the fragment's front edge,
+  with the void beneath it, is at the bottom. Wide levels pull back via
+  `cameraPullBack`. After the first impact the look target leans up to 18%
+  toward it and eases back.
+- **Completion.** A shot resolves when the orb is done, every block on the
+  platform is below the settle speed, and nothing significant has collided
+  for 0.5 s, or after 5 s. Victory waits 1.1 s so the collapse can play out.
+- **HUD.** "DESTRUCTION: 65%" has a rolling number and a pulse on each
+  increase.
+- **Effects.** An expanding flat cyan shockwave plays at each supplemental
+  impulse. Up to 6 debris pieces moving faster than 7 m/s carry glowing
+  trails. Camera shake is scaled by `cameraShakeIntensity`.
+
+# Prototype v0.1.0
 
 ## Architecture
 
@@ -70,13 +116,17 @@ means replacing `Scene/`, `Gameplay/`, `Effects/` and `GameSession`, while
 
 | Value | Default |
 |---|---|
-| Orb mass / radius | 9 kg / 0.38 m |
-| Launch speed | 21 m/s |
-| Gravity | -13 (levels 1 and 2), -10 (level 3) |
-| Block mass | 1 kg per 0.9 m cube (heavy ×3.5, scaled by volume) |
-| Block friction / restitution | 0.7 / 0.08 |
+| Orb mass / radius | 12 kg / 0.4 m |
+| Launch speed | 24 m/s |
+| Gravity | -12 (levels 1 and 2), -10 (level 3) |
+| Block mass | 0.55 kg per 0.8 m cube (heavy 1.8 kg, scaled by volume and kind density) |
+| Block friction / restitution | 0.55 / 0.12 |
+| Radial impulse | strength 7.5, radius 2.4 m, vertical 0.35, forward bias 0.45, max 9 |
+| Max block speed | 22 m/s |
 | Physics timestep | 1/120 s |
-| Camera | horizontal FOV 50°, fixed behind and above the cannon |
+| Camera | horizontal FOV 60°, elevation 7.6 m, 4.2 m behind the cannon |
+
+(Values updated for v0.2.0.)
 
 These values have **not been playtested on a device yet**. Use the debug
 overlay sliders to tune feel, then copy the values you like back into

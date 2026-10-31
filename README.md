@@ -1,11 +1,12 @@
 # Cosmic Destruction
 
 **Cnmbuck Studios**: a physics-based 3D destruction puzzle game for iPhone.
-Prototype v0.1.0 (Swift, SceneKit, SwiftUI; iOS 17+, portrait).
+Prototype v0.2.0 (Swift, SceneKit, SwiftUI; iOS 17+, portrait).
 
 You fire the Cnmbuck signature orb from an electromagnetic railgun at
-structures standing on a neon lunar platform floating in space. Knock 80% of
-the target blocks off the platform before you run out of shots.
+futuristic structures standing on a broken fragment of moon suspended over an
+endless void. Knock 80% of the target pieces into the abyss before you run out
+of shots. Levels: Lunar Gateway, Twin Spires, Orbital Citadel.
 
 ## Run it
 
@@ -37,11 +38,12 @@ xcodebuild -project CosmicDestruction.xcodeproj -scheme CosmicDestruction \
 ## Debug tools
 
 In a **Debug** build, go to *Settings › Developer* and turn on **Debug overlay
-button**. A `DBG` button then appears in the HUD. It shows FPS, rigid-body
-count, gravity, launch speed, yaw/elevation, targets left, and completion, and
-has live sliders for orb mass, launch speed, gravity, block friction,
-restitution, mass, settle threshold, and camera FOV. *Slow-motion moments* can
-also be switched off there.
+button**. A `DBG` button then appears in the HUD. It shows FPS, bodies,
+phase, orb speed and hits, radial impulses this shot, moved/fallen blocks,
+debris trails, settle state, fragment size, abyss thresholds, and camera
+values. It has live sliders grouped as projectile, blocks, destruction,
+environment, and camera (all of `DestructionPhysicsConfig`). *Slow-motion
+moments* can also be switched off there.
 
 ## Project layout
 
@@ -52,7 +54,7 @@ CosmicDestruction/
               GameConfig, GameManager, LevelDefinition, Levels, LevelManager, ProgressStore
   Engine/     GameSession (game loop + coordinator), GameSCNView (touch input), physics helpers
   Scene/      SceneManager, PlatformBuilder, MaterialLibrary, ProceduralTextures
-  Gameplay/   CannonController, OrbController, OrbVisual, StructureManager, TrajectoryIndicator
+  Gameplay/   CannonController, OrbController, OrbVisual, StructureManager, AbyssCleanupManager, TrajectoryIndicator
   Effects/    EffectsManager (flashes, particles, shockwaves, shake, slow motion)
   Audio/      AudioManager (sound + haptics), SoundSynth (procedurally generated audio)
   UI/         SwiftUI menus, HUD, overlays, debug overlay

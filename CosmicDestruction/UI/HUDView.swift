@@ -98,21 +98,29 @@ private struct ShotsIndicator: View {
     }
 }
 
+/// Live destruction readout (§11): "DESTRUCTION: 65%" with a rolling number,
+/// a brief pulse whenever it rises, and a bar showing the 80% target.
 private struct ObjectiveBar: View {
     let progress: Float
     let threshold: Float
+    @State private var pulse = false
+
+    private var percent: Int { Int((progress * 100).rounded()) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("DESTRUCTION")
-                    .font(Theme.label(10))
-                    .tracking(2)
-                    .foregroundStyle(Theme.textDim)
-                Spacer()
-                Text("\(Int((progress * 100).rounded()))% / \(Int((threshold * 100).rounded()))%")
-                    .font(Theme.mono(11))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("DESTRUCTION: \(percent)%")
+                    .font(Theme.label(15))
+                    .tracking(1.5)
                     .foregroundStyle(progress >= threshold ? Theme.cyan : .white)
+                    .contentTransition(.numericText(value: Double(percent)))
+                    .scaleEffect(pulse ? 1.08 : 1, anchor: .leading)
+                    .shadow(color: Theme.cyan.opacity(pulse ? 0.9 : 0), radius: 8)
+                Spacer()
+                Text("TARGET \(Int((threshold * 100).rounded()))%")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.textDim)
             }
             GeometryReader { geo in
                 let width = geo.size.width
@@ -129,10 +137,18 @@ private struct ObjectiveBar: View {
                 }
             }
             .frame(height: 8)
-            .animation(.easeOut(duration: 0.3), value: progress)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.panel))
+        .animation(.easeOut(duration: 0.35), value: progress)
+        .onChange(of: percent) { old, new in
+            guard new > old else { return }
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.5)) { pulse = true }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 220_000_000)
+                withAnimation(.easeOut(duration: 0.3)) { pulse = false }
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 import SceneKit
 import UIKit
+import simd
 
 /// Impact flashes, particles, shockwaves, muzzle flash, camera shake and
 /// cinematic slow motion. Particle counts and concurrent effects are capped so
@@ -11,15 +12,23 @@ final class EffectsManager {
 
     /// Master switch for slow motion (exposed in developer settings).
     var slowMotionEnabled = true
+    /// Multiplier on every camera shake (debug-tunable).
+    var shakeIntensity: Float = 1
 
     // Pools of reusable flash / shockwave nodes.
     private var flashPool: [SCNNode] = []
     private var shockPool: [SCNNode] = []
+    /// Flat rings that expand along the ground at the impact point.
+    private var groundRingPool: [SCNNode] = []
+    private var groundRingIndex = 0
     private var flashIndex = 0
     private var shockIndex = 0
 
     private let sparkTemplate: SCNParticleSystem
     private let dustTemplate: SCNParticleSystem
+    private let trailTemplate: SCNParticleSystem
+    /// Blocks currently carrying a debris trail.
+    private var trailed: [StructureManager.Block] = []
 
     // Impact light envelope.
     private var impactLightLevel: Float = 0
@@ -46,6 +55,7 @@ final class EffectsManager {
         sparkTemplate = Self.makeBurst(color: Palette.cyan, size: 0.09, speed: 4.5, life: 0.45, gravity: true)
         dustTemplate = Self.makeBurst(color: UIColor(red: 0.55, green: 0.45, blue: 0.85, alpha: 1),
                                       size: 0.16, speed: 1.4, life: 0.6, gravity: false)
+        trailTemplate = Self.makeTrail()
         let lib = MaterialLibrary.shared
 
         let flashGeo = SCNPlane(width: 1, height: 1)
@@ -66,12 +76,25 @@ final class EffectsManager {
             shock.renderingOrder = 21
             shockPool.append(shock)
         }
+        let ringGeo = SCNPlane(width: 1, height: 1)
+        ringGeo.materials = [lib.shockwave]
+        for _ in 0..<3 {
+            let holder = SCNNode()
+            let ring = SCNNode(geometry: ringGeo)
+            ring.eulerAngles.x = -.pi / 2
+            ring.castsShadow = false
+            ring.renderingOrder = 21
+            holder.addChildNode(ring)
+            holder.opacity = 0
+            groundRingPool.append(holder)
+        }
 
     }
 
     /// Re-attaches pooled nodes after the level root is cleared.
     func reset() {
-        for node in flashPool + shockPool {
+        trailed.removeAll()
+        for node in flashPool + shockPool + groundRingPool {
             node.removeAllActions()
             node.opacity = 0
             if node.parent == nil { root.addChildNode(node) }
@@ -92,6 +115,67 @@ final class EffectsManager {
         burst(sparkTemplate, at: point, count: 10 + 26 * k)
         sceneManager.impactLight.simdPosition = point + SIMD3<Float>(0, 0.4, 0)
         impactLightLevel = max(impactLightLevel, 1400 * k)
+    }
+
+    /// Expanding cyan shockwave ring flat along the impact height (§10).
+    func groundShockwave(at point: SIMD3<Float>, radius: Float) {
+        let node = groundRingPool[groundRingIndex % groundRingPool.count]
+        groundRingIndex += 1
+        if node.parent == nil { root.addChildNode(node) }
+        node.removeAllActions()
+        node.simdPosition = SIMD3<Float>(point.x, max(point.y - 0.2, 0.05), point.z)
+        node.simdScale = SIMD3<Float>(repeating: 0.3)
+        node.opacity = 1
+        let grow = SCNAction.scale(to: CGFloat(radius * 2.6), duration: 0.55)
+        grow.timingMode = .easeOut
+        let fade = SCNAction.sequence([.wait(duration: 0.15), .fadeOut(duration: 0.4)])
+        node.runAction(.group([grow, fade]))
+    }
+
+    /// Adds short glowing trails to fast-moving debris (capped), and removes
+    /// them once the piece slows down or leaves.
+    func updateDebrisTrails(blocks: [StructureManager.Block]) {
+        trailed.removeAll { block in
+            let speed = simd_length(block.node.physicsBody?.velocity.asSIMD ?? .zero)
+            guard block.isGone || speed < GameRules.debrisTrailSpeed * 0.5 else { return false }
+            block.node.removeAllParticleSystems()
+            block.hasTrail = false
+            return true
+        }
+        guard trailed.count < GameRules.maxDebrisTrails else { return }
+        for block in blocks where !block.hasTrail && !block.isGone {
+            guard let body = block.node.physicsBody,
+                  simd_length(body.velocity.asSIMD) > GameRules.debrisTrailSpeed,
+                  let system = trailTemplate.copy() as? SCNParticleSystem else { continue }
+            block.node.addParticleSystem(system)
+            block.hasTrail = true
+            trailed.append(block)
+            if trailed.count >= GameRules.maxDebrisTrails { break }
+        }
+    }
+
+    var activeTrailCount: Int { trailed.count }
+
+    private static func makeTrail() -> SCNParticleSystem {
+        let ps = SCNParticleSystem()
+        ps.loops = true
+        ps.birthRate = 70
+        ps.particleLifeSpan = 0.35
+        ps.particleSize = 0.12
+        ps.particleSizeVariation = 0.05
+        ps.particleColor = UIColor(red: 0.45, green: 0.6, blue: 1.0, alpha: 0.8)
+        ps.particleImage = MaterialLibrary.shared.glowImage
+        ps.blendMode = .additive
+        ps.isLightingEnabled = false
+        ps.particleVelocity = 0.2
+        ps.spreadingAngle = 180
+        ps.emittingDirection = SCNVector3(x: 0, y: 1, z: 0)
+        ps.sortingMode = .none
+        let fade = CAKeyframeAnimation()
+        fade.values = [0.8, 0.0]
+        fade.keyTimes = [0, 1]
+        ps.propertyControllers = [.opacity: SCNParticlePropertyController(animation: fade)]
+        return ps
     }
 
     /// Small dust/energy puff for block-on-block or block-on-ground hits.
@@ -171,8 +255,9 @@ final class EffectsManager {
 
     // MARK: Camera shake
 
-    func shake(amplitude: Float, duration: Float) {
-        guard amplitude >= shakeAmplitude * (shakeRemaining / max(shakeDuration, 0.001)) else { return }
+    func shake(amplitude rawAmplitude: Float, duration: Float) {
+        let amplitude = rawAmplitude * shakeIntensity
+        guard amplitude > 0.0001, amplitude >= shakeAmplitude * (shakeRemaining / max(shakeDuration, 0.001)) else { return }
         shakeAmplitude = amplitude
         shakeDuration = duration
         shakeRemaining = duration
