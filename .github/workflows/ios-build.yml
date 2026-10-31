@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Show Xcode version
@@ -54,12 +56,14 @@ jobs:
         with:
           name: smoke-test-screenshots
           path: screenshots/
-      - name: Print screenshot previews to log
-        if: always()
+      - name: Publish screenshots to the ci-screenshots branch
+        if: always() && github.event_name != 'pull_request'
         run: |
-          mkdir -p previews
-          for f in screenshots/*.png; do
-            n=$(basename "$f" .png)
-            sips -s format jpeg -s formatOptions 45 --resampleWidth 360 "$f" --out "previews/$n.jpg" >/dev/null
-            echo "PREVIEW_BEGIN $n"; base64 -i "previews/$n.jpg" | tr -d '\n'; echo; echo "PREVIEW_END $n"
-          done
+          [ -d screenshots ] || exit 0
+          cd screenshots
+          git init -q -b ci-screenshots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "Screenshots from run ${{ github.run_id }} (commit ${{ github.sha }})" > README.md
+          git add -A && git commit -q -m "Smoke-test screenshots for ${{ github.sha }}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots
