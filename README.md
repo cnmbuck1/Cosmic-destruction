@@ -16,7 +16,7 @@ the target blocks off the platform before you run out of shots.
 3. Press **Run** (⌘R).
 
 To run on a physical iPhone, select your team under *Signing & Capabilities*
-(the bundle ID is `com.cnmbuckstudios.cosmicdestruction`; change it if it's taken).
+(the bundle ID is `com.cnmbuckstudios.cosmic-destruction`, registered to Cnmbuck Studios).
 
 Command-line build (the same command CI runs):
 
@@ -61,3 +61,18 @@ docs/IMPLEMENTATION_NOTES.md   Design decisions, tuning notes, next steps
 
 There are no external dependencies or bundled assets. Every texture and sound
 is generated at runtime.
+
+## TestFlight
+
+`.github/workflows/testflight.yml` archives a Release build, signs it with
+Xcode's automatic signing using an App Store Connect API key, and uploads it
+to TestFlight. You can run it from the Actions tab (*TestFlight › Run
+workflow*) or by pushing a `v*` tag. It needs four repo secrets:
+`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (the .p8 file contents), and
+`APPLE_TEAM_ID`. The build number is the workflow run number.
+
+## Web preview
+
+`web-preview/index.html` is a standalone browser port (Three.js + cannon.js)
+of the same three levels, used for quick sharing. It is separate from the
+iOS code, so changes to one are not reflected in the other.
