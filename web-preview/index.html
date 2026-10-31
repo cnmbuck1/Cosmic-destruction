@@ -1257,6 +1257,6 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Test hook for automated checks (no effect on play).
-window.__cd = { disp: () => ({ orb: currentOrb && [currentOrb.body.position.x, currentOrb.body.position.y, currentOrb.body.position.z].map((v) => +v.toFixed(2)), hits: currentOrb && currentOrb.hits, moved: blocks.filter((b) => b.body.position.distanceTo(b.start) > 0.1).map((b) => b.spec.k + ' ' + b.body.position.distanceTo(b.start).toFixed(2)) }), dbg: () => blocks.filter((b) => !b.gone && b.body.velocity.length() > 0.05).map((b) => b.spec.k + ':' + b.body.velocity.length().toFixed(2) + '@' + [b.body.position.x, b.body.position.y, b.body.position.z].map((v) => v.toFixed(2)).join(',') + ' start ' + [b.start.x, b.start.y, b.start.z].map((v) => v.toFixed(2)).join(',')), loadLevel, fire, state: () => ({ phase, shotsUsed, progress: progressFrac(), level: level && level.id, blocks: blocks.length, supp: suppThisShot, trails: trailCount, moving: blocks.filter((b) => !b.gone && b.body.velocity.length() > 0.05).length, gone: blocks.filter((b) => b.gone).length }), aim: (y, e) => { cannon.set(y, e); updateTrajectory(1); } };
+window.__cd = { loadLevel, fire, state: () => ({ phase, shotsUsed, progress: progressFrac(), level: level && level.id, blocks: blocks.length, supp: suppThisShot, trails: trailCount, moving: blocks.filter((b) => !b.gone && b.body.velocity.length() > 0.05).length, gone: blocks.filter((b) => b.gone).length }), aim: (y, e) => { cannon.set(y, e); updateTrajectory(1); } };
 })();
 </script>
