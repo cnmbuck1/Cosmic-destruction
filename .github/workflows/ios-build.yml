@@ -47,10 +47,12 @@ jobs:
           # Capture launchctl output first: piping straight into `grep -q` lets grep
           # exit early, launchctl dies of SIGPIPE, and pipefail reports a false crash.
           app_running() { local jobs; jobs=$(xcrun simctl spawn "$UDID" launchctl list); grep -q cosmic-destruction <<<"$jobs"; }
-          sleep 3;  xcrun simctl io "$UDID" screenshot screenshots/1-level1-loaded.png
-          sleep 3;  xcrun simctl io "$UDID" screenshot screenshots/2-level1-center-impact.png
-          sleep 1;  xcrun simctl io "$UDID" screenshot screenshots/3-level1-center-debris.png
-          sleep 20; xcrun simctl io "$UDID" screenshot screenshots/4-level1-after-shots.png
+          # A frame every ~0.7 s through both shots, so the impacts are captured.
+          for i in $(seq -w 1 16); do
+            xcrun simctl io "$UDID" screenshot "screenshots/1-level1-$i.png" >/dev/null 2>&1 || true
+            sleep 0.4
+          done
+          sleep 8; xcrun simctl io "$UDID" screenshot screenshots/2-level1-end.png
           if ! app_running; then
             echo "App is not running: it crashed during the level 1 smoke test"; exit 1
           fi

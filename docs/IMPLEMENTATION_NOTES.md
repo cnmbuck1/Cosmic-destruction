@@ -1,5 +1,41 @@
 # Implementation notes
 
+## Build 3.0 (Level 1 gameplay redesign)
+
+Root causes found in v0.2.0 before changing anything:
+
+- The cannon sat 10.4 m from the structure on an 18 × 16 m platform, so Level 1 filled about 15% of the screen height.
+- The radial impulse used quadratic falloff over 2.4 m with a mass-scaled cap, so a block 1 m from the hit got only about 2.5 m/s.
+- Debris had 4+ m of flat ground to cross before it could reach an edge, so almost nothing fell into the void.
+- Progress counted only blocks that fell off the platform, so a wrecked structure could still read 10%.
+
+What changed (web preview and iOS are kept in step):
+
+| Area | Value |
+| --- | --- |
+| Island | 7.8 × 10 m, centered at z −0.6, 2.2 m thick, nearly convex (no bites), craters only in the rim band |
+| Cannon | z 3.4, drawn at 72% scale |
+| Camera | elevation 5.4, 4.2 m behind the cannon, looks at (origin.x, 1.2, origin.z + 0.6), horizontal FOV 38° |
+| Orb | 14 kg, radius 0.4, launch 30 m/s |
+| Blocks | standard 0.55 kg per 0.8 m cube, heavy 1.8, friction 0.42, restitution 0.12, damping 0.02 / 0.04, max speed 26 m/s |
+| Impact energy | clamp(incoming speed / launch speed, 0.3, 1.2), halved for the orb's second impact; max 2 impacts per orb, 0.25 s apart |
+| Displacement | a target counts once it moves > 0.7 m from its slot or tilts > 30° |
+| Score | 100 per displaced target, 150 per target in the void, 250 per unused shot at victory |
+
+Impact presets (`ImpactPreset`, debug switch in the HUD and the debug panel):
+
+| Preset | Δv (m/s) | Radius | Forward | Radial | Up | Spin | Cap | Falloff exp. |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| A Moderate | 6.5 | 2.0 | 0.7 | 0.35 | 0.25 | 3 | 9 | 1.4 |
+| B Powerful (default) | 10.5 | 2.0 | 0.7 | 0.3 | 0.35 | 5 | 14 | 1.2 |
+| C Spectacular | 15 | 3.2 | 0.6 | 0.5 | 0.45 | 8 | 20 | 1.0 |
+
+Each block within the radius gets Δv × energy × (1 − d/r)^falloff × clamp((0.55 / mass)^0.2, 0.6, 1.15), capped, along normalize(forward × incoming + radial × horizontal-away + up × Y), plus tumble about the axis perpendicular to the push. The struck block counts as distance 0. SceneKit reports contacts after resolving them, so the orb's velocity from the previous frame is used as the incoming velocity.
+
+Level 1 (Lunar Gateway) is now three separate pieces: two pylons at x ±2.3 and a central gate. 5 shots, 60% target, stars at 2 / 3 / 5 shots. Levels 2 and 3 were moved onto the smaller island with 5 shots and a 70% target but were not rebalanced.
+
+Verification so far (web preview, cannon.js, headless): every direct hit on one piece destroys it (33%, 4–7 blocks into the void) under presets A and B; a simulated new player with ±2.5° aim error wins in 2–3 shots. The iOS build is checked by CI only; feel and frame rate on a device are not verified.
+
 ## Build sheet 2.0 (v0.2.0)
 
 Goal: destroying futuristic structures on a moon suspended over an endless
