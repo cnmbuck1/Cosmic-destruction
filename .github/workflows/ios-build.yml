@@ -54,3 +54,12 @@ jobs:
         with:
           name: smoke-test-screenshots
           path: screenshots/
+      - name: Print screenshot previews to log
+        if: always()
+        run: |
+          mkdir -p previews
+          for f in screenshots/*.png; do
+            n=$(basename "$f" .png)
+            sips -s format jpeg -s formatOptions 45 --resampleWidth 360 "$f" --out "previews/$n.jpg" >/dev/null
+            echo "PREVIEW_BEGIN $n"; base64 -i "previews/$n.jpg" | tr -d '\n'; echo; echo "PREVIEW_END $n"
+          done
