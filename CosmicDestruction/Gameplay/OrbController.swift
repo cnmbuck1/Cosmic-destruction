@@ -9,11 +9,16 @@ final class OrbController {
         let id = UUID()
         let node: SCNNode
         let launchTime: TimeInterval
+        let launchDirection: SIMD3<Float>
         var impactCount = 0
+        /// Supplemental radial impulses triggered by this orb (capped per orb).
+        var supplementalCount = 0
+        var lastSupplementalTime: TimeInterval = -.infinity
 
-        init(node: SCNNode, launchTime: TimeInterval) {
+        init(node: SCNNode, launchTime: TimeInterval, launchDirection: SIMD3<Float>) {
             self.node = node
             self.launchTime = launchTime
+            self.launchDirection = launchDirection
         }
     }
 
@@ -58,7 +63,7 @@ final class OrbController {
         node.physicsBody = body
 
         parent?.addChildNode(node)
-        let orb = Orb(node: node, launchTime: time)
+        let orb = Orb(node: node, launchTime: time, launchDirection: direction)
         orbs.append(orb)
         byNode[ObjectIdentifier(node)] = orb
         return orb

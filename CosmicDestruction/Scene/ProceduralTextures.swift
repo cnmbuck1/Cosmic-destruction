@@ -1,4 +1,5 @@
 import UIKit
+import simd
 
 /// Generates every texture in the game at runtime. No external art assets.
 /// Each generator is deterministic (seeded) and cached by `MaterialLibrary`.
@@ -30,11 +31,11 @@ enum ProceduralTextures {
 
             // Nebula: soft overlapping radial blobs in purple, cyan and magenta.
             let nebulaColors: [UIColor] = [
-                UIColor(red: 0.35, green: 0.1, blue: 0.6, alpha: 1),
-                UIColor(red: 0.05, green: 0.35, blue: 0.55, alpha: 1),
-                UIColor(red: 0.55, green: 0.08, blue: 0.4, alpha: 1),
+                UIColor(red: 0.3, green: 0.12, blue: 0.62, alpha: 1),
+                UIColor(red: 0.08, green: 0.2, blue: 0.6, alpha: 1),
+                UIColor(red: 0.12, green: 0.38, blue: 0.7, alpha: 1),
             ]
-            for i in 0..<34 {
+            for i in 0..<48 {
                 let color = nebulaColors[i % nebulaColors.count]
                 // Concentrate the nebula in a band behind the arena.
                 let center = CGPoint(x: rng.cg(200...1850), y: rng.cg(280...620))
@@ -70,40 +71,92 @@ enum ProceduralTextures {
         }
     }
 
-    // MARK: Lunar platform
+    // MARK: Lunar fragment
 
-    /// Dark stone surface with craters and speckle.
-    static func lunarSurfaceDiffuse() -> UIImage {
-        let size = CGSize(width: 1024, height: 1024)
+    /// Shared height field (0...1) for the lunar surface: layered value noise
+    /// plus craters with raised rims. Diffuse and normal maps derive from it,
+    /// so shading and relief always agree.
+    private static let lunarFieldSize = 512
+    private static let lunarHeightField: [Float] = {
+        let n = lunarFieldSize
+        var field = [Float](repeating: 0, count: n * n)
+        let noise = ValueNoise(seed: 61)
+        for y in 0..<n {
+            for x in 0..<n {
+                let u = Float(x) / Float(n), v = Float(y) / Float(n)
+                field[y * n + x] = 0.5 + 0.35 * noise.fbm(u * 9, v * 9, octaves: 5)
+            }
+        }
         var rng = SeededRandom(seed: 21)
-        return renderer(size).image { ctx in
-            let cg = ctx.cgContext
-            cg.setFillColor(UIColor(red: 0.09, green: 0.095, blue: 0.12, alpha: 1).cgColor)
-            cg.fill(CGRect(origin: .zero, size: size))
+        // Craters: a few large ones, many small ones.
+        for i in 0..<70 {
+            let r = i < 8 ? rng.float(22...46) : rng.float(4...16)
+            let cx = rng.float(0...Float(n)), cy = rng.float(0...Float(n))
+            let depth: Float = i < 8 ? 0.4 : 0.25
+            let reach = Int(r * 1.5) + 1
+            for dy in -reach...reach {
+                for dx in -reach...reach {
+                    let x = Int(cx) + dx, y = Int(cy) + dy
+                    guard x >= 0, y >= 0, x < n, y < n else { continue }
+                    let d = sqrt(Float(dx * dx + dy * dy)) / r
+                    var h: Float = 0
+                    if d < 1 { h = -depth * (1 - d * d) } else if d < 1.5 { h = depth * 0.35 * sin((d - 1) / 0.5 * .pi) }
+                    field[y * n + x] += h
+                }
+            }
+        }
+        return field
+    }()
 
-            for _ in 0..<5000 {
-                let shade = rng.cg(0...1)
-                let color = shade > 0.5
-                    ? UIColor(white: 0.3, alpha: rng.cg(0.03...0.08))
-                    : UIColor(white: 0.0, alpha: rng.cg(0.05...0.12))
-                cg.setFillColor(color.cgColor)
-                let r = rng.cg(1...9)
-                cg.fillEllipse(in: CGRect(x: rng.cg(0...size.width), y: rng.cg(0...size.height), width: r, height: r))
+    private static func image(size n: Int, pixel: (Int, Int) -> (UInt8, UInt8, UInt8)) -> UIImage {
+        var bytes = [UInt8](repeating: 255, count: n * n * 4)
+        for y in 0..<n {
+            for x in 0..<n {
+                let (r, g, b) = pixel(x, y)
+                let o = (y * n + x) * 4
+                bytes[o] = r; bytes[o + 1] = g; bytes[o + 2] = b
             }
-            // Craters
-            for _ in 0..<26 {
-                let r = rng.cg(12...60)
-                let rect = CGRect(x: rng.cg(0...size.width), y: rng.cg(0...size.height), width: r, height: r)
-                cg.setFillColor(UIColor(white: 0, alpha: 0.22).cgColor)
-                cg.fillEllipse(in: rect)
-                cg.setStrokeColor(UIColor(white: 0.45, alpha: 0.12).cgColor)
-                cg.setLineWidth(2)
-                cg.strokeEllipse(in: rect.insetBy(dx: -1, dy: -1))
-            }
+        }
+        let provider = CGDataProvider(data: Data(bytes) as CFData)!
+        let cgImage = CGImage(width: n, height: n, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: n * 4,
+                              space: CGColorSpaceCreateDeviceRGB(),
+                              bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                              provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)!
+        return UIImage(cgImage: cgImage)
+    }
+
+    private static func byte(_ v: Float) -> UInt8 { UInt8((v.clamped(0, 1) * 255).rounded()) }
+
+    /// Grey-blue regolith: darker crater floors, lighter sunlit rims, speckle.
+    static func lunarSurfaceDiffuse() -> UIImage {
+        let n = lunarFieldSize
+        let field = lunarHeightField
+        let speckle = ValueNoise(seed: 77)
+        return image(size: n) { x, y in
+            let h = field[y * n + x]
+            let hx = field[y * n + min(x + 1, n - 1)] - h
+            let hy = field[min(y + 1, n - 1) * n + x] - h
+            // Fake directional light from the upper left.
+            let lit = (-(hx + hy) * 9).clamped(-0.25, 0.25)
+            let grain = speckle.value(Float(x) * 0.9, Float(y) * 0.9) - 0.5
+            let base = 0.13 + 0.12 * h + lit * 0.35 + grain * 0.05
+            return (byte(base * 0.95), byte(base * 0.97), byte(base * 1.08))
         }
     }
 
-    /// Emission map: glowing cyan/purple cracks plus faint geometric patterns.
+    static func lunarSurfaceNormal() -> UIImage {
+        let n = lunarFieldSize
+        let field = lunarHeightField
+        return image(size: n) { x, y in
+            let l = field[y * n + max(x - 1, 0)], r = field[y * n + min(x + 1, n - 1)]
+            let u = field[max(y - 1, 0) * n + x], d = field[min(y + 1, n - 1) * n + x]
+            let normal = simd_normalize(SIMD3<Float>((l - r) * 6, (u - d) * 6, 1))
+            return (byte(normal.x * 0.5 + 0.5), byte(normal.y * 0.5 + 0.5), byte(normal.z * 0.5 + 0.5))
+        }
+    }
+
+    /// Emission: a few thin cyan fractures and purple veins, kept mostly to
+    /// the outer region so the play area stays calm. No grid, no rings.
     static func lunarSurfaceEmission() -> UIImage {
         let size = CGSize(width: 1024, height: 1024)
         var rng = SeededRandom(seed: 33)
@@ -113,61 +166,124 @@ enum ProceduralTextures {
             cg.fill(CGRect(origin: .zero, size: size))
             cg.setLineCap(.round)
             cg.setLineJoin(.round)
-
-            // Faint concentric arena rings and a hex lattice.
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            cg.setStrokeColor(UIColor(red: 0.1, green: 0.55, blue: 0.75, alpha: 0.22).cgColor)
-            cg.setLineWidth(2)
-            for r in stride(from: CGFloat(120), through: 480, by: 120) {
-                cg.strokeEllipse(in: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2))
-            }
-            cg.setStrokeColor(UIColor(red: 0.35, green: 0.15, blue: 0.6, alpha: 0.14).cgColor)
-            cg.setLineWidth(1.5)
-            let hex: CGFloat = 64
-            var row = 0
-            for y in stride(from: CGFloat(0), through: size.height, by: hex * 0.866) {
-                let offset = row % 2 == 0 ? 0 : hex / 2
-                for x in stride(from: offset, through: size.width, by: hex) {
-                    let path = CGMutablePath()
-                    for k in 0..<6 {
-                        let a = CGFloat(k) * .pi / 3 + .pi / 6
-                        let p = CGPoint(x: x + cos(a) * hex * 0.5, y: y + sin(a) * hex * 0.5)
-                        if k == 0 { path.move(to: p) } else { path.addLine(to: p) }
-                    }
-                    path.closeSubpath()
-                    cg.addPath(path)
-                }
-                row += 1
-            }
-            cg.strokePath()
-
-            // Cracks: branching random walks.
-            let crackColors = [
+            let colors = [
                 UIColor(red: 0.2, green: 0.9, blue: 1.0, alpha: 1),
-                UIColor(red: 0.65, green: 0.3, blue: 1.0, alpha: 1),
+                UIColor(red: 0.6, green: 0.28, blue: 1.0, alpha: 1),
             ]
-            for i in 0..<16 {
-                let color = crackColors[i % 2]
-                var p = CGPoint(x: rng.cg(0...size.width), y: rng.cg(0...size.height))
-                var angle = rng.cg(0...(2 * .pi))
+            for i in 0..<14 {
+                let color = colors[i % 2]
+                // Start in the outer ring and wander roughly tangentially.
+                let a0 = rng.cg(0...(2 * .pi))
+                let r0 = rng.cg(300...470)
+                var p = CGPoint(x: center.x + cos(a0) * r0, y: center.y + sin(a0) * r0)
+                var angle = a0 + .pi / 2 * (rng.cg(0...1) > 0.5 ? 1 : -1)
                 let path = CGMutablePath()
                 path.move(to: p)
-                for _ in 0..<Int(rng.cg(6...16)) {
-                    angle += rng.cg(-0.7...0.7)
-                    let len = rng.cg(10...34)
+                for _ in 0..<Int(rng.cg(5...12)) {
+                    angle += rng.cg(-0.8...0.8)
+                    let len = rng.cg(8...26)
                     p = CGPoint(x: p.x + cos(angle) * len, y: p.y + sin(angle) * len)
                     path.addLine(to: p)
                 }
-                // Glow pass then bright core pass.
                 cg.addPath(path)
-                cg.setStrokeColor(color.withAlphaComponent(0.25).cgColor)
-                cg.setLineWidth(7)
+                cg.setStrokeColor(color.withAlphaComponent(0.18).cgColor)
+                cg.setLineWidth(6)
                 cg.strokePath()
                 cg.addPath(path)
-                cg.setStrokeColor(color.withAlphaComponent(0.9).cgColor)
-                cg.setLineWidth(2)
+                cg.setStrokeColor(color.withAlphaComponent(0.85).cgColor)
+                cg.setLineWidth(1.6)
                 cg.strokePath()
             }
+        }
+    }
+
+    /// Horizontal rock layers for the fragment's sides (tiles horizontally).
+    static func strataDiffuse() -> UIImage {
+        let n = 512
+        var rng = SeededRandom(seed: 51)
+        var bands: [Float] = []
+        var shade: Float = 0.12
+        while bands.count < n {
+            shade = (shade + rng.float(-0.05...0.05)).clamped(0.06, 0.2)
+            let h = Int(rng.float(6...40))
+            bands += [Float](repeating: shade, count: h)
+        }
+        let noise = ValueNoise(seed: 53)
+        return image(size: n) { x, y in
+            // Gentle waviness so layers aren't ruler-straight.
+            let wobble = Int(6 * noise.fbm(Float(x) / 64, 0.5, octaves: 2))
+            let row = min(max(y + wobble, 0), n - 1)
+            let grain = noise.fbm(Float(x) / 9, Float(y) / 3, octaves: 3) * 0.05
+            let v = bands[row] + grain
+            return (byte(v * 0.95), byte(v * 0.95), byte(v * 1.12))
+        }
+    }
+
+    /// Sparse purple veins along a couple of layers, with rare cyan glints.
+    static func strataEmission() -> UIImage {
+        let size = CGSize(width: 512, height: 512)
+        var rng = SeededRandom(seed: 57)
+        return renderer(size).image { ctx in
+            let cg = ctx.cgContext
+            cg.setFillColor(UIColor.black.cgColor)
+            cg.fill(CGRect(origin: .zero, size: size))
+            cg.setLineCap(.round)
+            for i in 0..<5 {
+                let color = i == 0 ? Palette.cyan : Palette.purple
+                var p = CGPoint(x: rng.cg(0...512), y: rng.cg(60...460))
+                let path = CGMutablePath()
+                path.move(to: p)
+                for _ in 0..<Int(rng.cg(4...9)) {
+                    p = CGPoint(x: p.x + rng.cg(12...34), y: p.y + rng.cg(-6...6))
+                    path.addLine(to: p)
+                }
+                cg.addPath(path)
+                cg.setStrokeColor(color.withAlphaComponent(0.2).cgColor)
+                cg.setLineWidth(6)
+                cg.strokePath()
+                cg.addPath(path)
+                cg.setStrokeColor(color.withAlphaComponent(0.8).cgColor)
+                cg.setLineWidth(1.5)
+                cg.strokePath()
+            }
+        }
+    }
+
+    /// White ring pattern (tinted by its material) for the energy circle.
+    static func energyCircle() -> UIImage {
+        let size: CGFloat = 512
+        return renderer(CGSize(width: size, height: size), opaque: true).image { ctx in
+            let cg = ctx.cgContext
+            cg.setFillColor(UIColor.black.cgColor)
+            cg.fill(CGRect(x: 0, y: 0, width: size, height: size))
+            let c = CGPoint(x: size / 2, y: size / 2)
+            let space = CGColorSpaceCreateDeviceRGB()
+            let fill = CGGradient(colorsSpace: space, colors: [
+                UIColor(white: 0.08, alpha: 1).cgColor, UIColor(white: 0.03, alpha: 1).cgColor, UIColor.black.cgColor,
+            ] as CFArray, locations: [0, 0.8, 1])!
+            cg.drawRadialGradient(fill, startCenter: c, startRadius: 0, endCenter: c, endRadius: size / 2, options: [])
+            func ring(_ r: CGFloat, _ width: CGFloat, _ white: CGFloat, dash: [CGFloat] = []) {
+                cg.setStrokeColor(UIColor(white: white, alpha: 1).cgColor)
+                cg.setLineWidth(width)
+                cg.setLineDash(phase: 0, lengths: dash)
+                cg.strokeEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+            }
+            ring(246, 3, 0.55)
+            ring(236, 1.5, 0.25)
+            ring(200, 2, 0.35, dash: [18, 10])
+            ring(120, 1.5, 0.2, dash: [4, 8])
+            cg.setLineDash(phase: 0, lengths: [])
+            // Tick marks between the outer rings.
+            cg.setStrokeColor(UIColor(white: 0.4, alpha: 1).cgColor)
+            cg.setLineWidth(2)
+            for k in 0..<48 {
+                let a = CGFloat(k) / 48 * 2 * .pi
+                let r0: CGFloat = k % 4 == 0 ? 208 : 220
+                cg.move(to: CGPoint(x: c.x + cos(a) * r0, y: c.y + sin(a) * r0))
+                cg.addLine(to: CGPoint(x: c.x + cos(a) * 232, y: c.y + sin(a) * 232))
+            }
+            cg.strokePath()
         }
     }
 
@@ -285,5 +401,41 @@ enum ProceduralTextures {
                 y += h
             }
         }
+    }
+}
+
+/// Deterministic 2D value noise with fractal sums, used by the texture generators.
+struct ValueNoise {
+    private var table: [Float]
+
+    init(seed: UInt64) {
+        var rng = SeededRandom(seed: seed)
+        table = (0..<256 * 256).map { _ in rng.float(0...1) }
+    }
+
+    private func lattice(_ x: Int, _ y: Int) -> Float {
+        table[(y & 255) * 256 + (x & 255)]
+    }
+
+    func value(_ x: Float, _ y: Float) -> Float {
+        let xi = Int(floor(x)), yi = Int(floor(y))
+        var fx = x - floor(x), fy = y - floor(y)
+        fx = fx * fx * (3 - 2 * fx)
+        fy = fy * fy * (3 - 2 * fy)
+        let a = lattice(xi, yi), b = lattice(xi + 1, yi)
+        let c = lattice(xi, yi + 1), d = lattice(xi + 1, yi + 1)
+        return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fy
+    }
+
+    /// Fractal sum centered on 0 (roughly -0.5...0.5).
+    func fbm(_ x: Float, _ y: Float, octaves: Int) -> Float {
+        var sum: Float = 0, amplitude: Float = 0.5, frequency: Float = 1, norm: Float = 0
+        for _ in 0..<octaves {
+            sum += (value(x * frequency, y * frequency) - 0.5) * amplitude
+            norm += amplitude
+            amplitude *= 0.5
+            frequency *= 2
+        }
+        return sum / norm
     }
 }

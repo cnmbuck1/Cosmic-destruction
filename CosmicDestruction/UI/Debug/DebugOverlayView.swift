@@ -14,14 +14,32 @@ struct DebugOverlayView: View {
                 Divider().overlay(Theme.magenta.opacity(0.4))
                 ScrollView {
                     VStack(spacing: 6) {
+                        section("PROJECTILE")
                         slider("Orb mass", \.orbMass, 1...30, "%.1f kg")
                         slider("Launch speed", \.launchSpeed, 8...40, "%.1f m/s")
-                        gravitySlider
+                        slider("Impulse mult.", \.orbImpulseMultiplier, 1...3, "%.2f×")
+                        section("BLOCKS")
+                        slider("Standard mass", \.standardBlockMass, 0.1...3, "%.2f kg")
+                        slider("Heavy mass", \.heavyBlockMass, 0.3...6, "%.2f kg")
                         slider("Block friction", \.blockFriction, 0...1.5, "%.2f")
                         slider("Block restitution", \.blockRestitution, 0...0.8, "%.2f")
-                        slider("Block mass", \.blockMass, 0.2...5, "%.2f kg")
+                        slider("Max block speed", \.maxBlockVelocity, 5...40, "%.0f m/s")
+                        section("DESTRUCTION")
+                        slider("Radial strength", \.radialImpulseStrength, 0...20, "%.1f")
+                        slider("Radial radius", \.radialImpulseRadius, 0.5...5, "%.1f m")
+                        slider("Vertical comp.", \.verticalImpulseComponent, 0...1, "%.2f")
+                        slider("Forward bias", \.forwardBias, 0...1, "%.2f")
+                        slider("Max supplemental", \.maxSupplementalImpulse, 0...25, "%.1f")
                         slider("Settle threshold", \.settleSpeedThreshold, 0.05...1.5, "%.2f m/s")
-                        slider("Camera FOV", \.cameraFieldOfView, 40...90, "%.0f°")
+                        section("ENVIRONMENT")
+                        gravitySlider
+                        slider("Abyss fade", \.abyssFadeDepth, 1...12, "%.1f m")
+                        slider("Abyss cleanup", \.abyssCleanupDepth, 8...40, "%.0f m")
+                        section("CAMERA")
+                        slider("Elevation", \.cameraElevation, 3...14, "%.1f m")
+                        slider("Distance", \.cameraDistance, 1...12, "%.1f m")
+                        slider("FOV", \.cameraFieldOfView, 40...90, "%.0f°")
+                        slider("Shake", \.cameraShakeIntensity, 0...2, "%.2f×")
                         HStack {
                             Button("Reset tuning") { session.resetTuning() }
                             Spacer()
@@ -32,7 +50,7 @@ struct DebugOverlayView: View {
                         .padding(.top, 4)
                     }
                 }
-                .frame(maxHeight: 230)
+                .frame(maxHeight: 260)
             }
             .padding(12)
             .background(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.82)))
@@ -44,14 +62,31 @@ struct DebugOverlayView: View {
 
     private var stats: some View {
         let s = session.debugStats
+        let t = session.tuning
         return VStack(alignment: .leading, spacing: 2) {
             Text(String(format: "FPS %.0f   bodies %ld   phase %@", s.fps, s.rigidBodies, s.phase))
             Text(String(format: "gravity %.1f   launch %.1f m/s   time×%.2f", s.gravity, s.launchSpeed, s.timeScale))
             Text(String(format: "yaw %.1f°   elev %.1f°", s.yaw, s.elevation))
             Text(String(format: "targets left %ld   complete %.0f%%", s.remainingTargets, s.progress * 100))
+            Text(String(format: "orb %.1f m/s   hits %ld   radial %ld", s.orbSpeed, s.orbImpacts, s.supplementalThisShot))
+            Text(String(format: "blocks %ld/%ld   moved %ld   fallen %ld   trails %ld",
+                        s.activeBlocks, s.totalBlocks, s.displacedBlocks, s.fallenBlocks, s.debrisTrails))
+            Text(String(format: "max v %.2f   quiet %.1fs   shot %.1fs", s.maxBlockSpeed, s.timeSinceCollision, s.shotElapsed))
+            Text(String(format: "fragment %.0f×%.0f×%.1f m   abyss fade %.0f / clean %.0f m",
+                        t.platformWidth, t.platformDepth, t.platformThickness, t.abyssFadeDepth, t.abyssCleanupDepth))
+            Text(String(format: "camera elev %.1f  dist %.1f  fov %.0f  shake %.1f",
+                        t.cameraElevation, t.cameraDistance, t.cameraFieldOfView, t.cameraShakeIntensity))
         }
         .font(Theme.mono(11))
         .foregroundStyle(Theme.magenta)
+    }
+
+    private func section(_ title: String) -> some View {
+        Text(title)
+            .font(Theme.mono(10))
+            .foregroundStyle(Theme.magenta)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
     }
 
     private func slider(_ title: String, _ keyPath: WritableKeyPath<PhysicsTuning, Float>,

@@ -49,6 +49,15 @@ jobs:
           fi
           xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmic-destruction || true
           sleep 2
+          xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmic-destruction -SmokeTestLevel 3 -SmokeTestAutoFire
+          sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/4-level3-loaded.png
+          sleep 1;  xcrun simctl io "$UDID" screenshot screenshots/5-level3-impact.png
+          sleep 5;  xcrun simctl io "$UDID" screenshot screenshots/6-level3-after-shot.png
+          if ! xcrun simctl spawn "$UDID" launchctl list | grep -q cosmic-destruction; then
+            echo "App is not running: it crashed on level 3"; exit 1
+          fi
+          xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmic-destruction || true
+          sleep 2
           xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmic-destruction
           sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/0-main-menu.png
       - name: Upload screenshots

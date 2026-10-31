@@ -33,6 +33,20 @@ struct DebugStats: Equatable {
     var progress: Float = 0
     var timeScale: Float = 1
     var phase = ""
+    // Projectile
+    var orbSpeed: Float = 0
+    var orbImpacts = 0
+    var supplementalThisShot = 0
+    // Blocks
+    var totalBlocks = 0
+    var activeBlocks = 0
+    var displacedBlocks = 0
+    var fallenBlocks = 0
+    var maxBlockSpeed: Float = 0
+    var debrisTrails = 0
+    // Completion
+    var timeSinceCollision: Double = 0
+    var shotElapsed: Double = 0
 }
 
 /// Coordinates one play session: owns the SceneKit systems and the
@@ -86,6 +100,9 @@ final class GameSession: ObservableObject, AimInputDelegate {
     private var displacedThisShot = 0
     private var collapseTriggeredThisShot = false
     private var lastHapticTime: TimeInterval = 0
+    /// Simulation time of the last significant collision (for settle-aware completion).
+    private var lastSignificantCollisionTime: TimeInterval = 0
+    private var supplementalThisShot = 0
 
     // FPS / debug
     private var fpsFrames = 0
@@ -160,7 +177,8 @@ final class GameSession: ObservableObject, AimInputDelegate {
         effects.reset()
 
         sceneManager.setGravity(tuning.gravityOverride ?? level.gravity)
-        sceneManager.setFieldOfView(tuning.cameraFieldOfView)
+        sceneManager.frame(level: level, config: tuning)
+        effects.shakeIntensity = tuning.cameraShakeIntensity
         structure.build(level: level, tuning: tuning)
         gameManager.start(level: level)
         cannon.resetAim()
@@ -170,6 +188,8 @@ final class GameSession: ObservableObject, AimInputDelegate {
         stabilizersReleased = false
         displacedThisShot = 0
         collapseTriggeredThisShot = false
+        supplementalThisShot = 0
+        lastSignificantCollisionTime = 0
         overlay = .none
         setPaused(false)
         updateTrajectory(emphasis: 0.35)
@@ -288,6 +308,8 @@ final class GameSession: ObservableObject, AimInputDelegate {
         trajectory.hide()
         displacedThisShot = 0
         collapseTriggeredThisShot = false
+        supplementalThisShot = 0
+        lastSignificantCollisionTime = simTime
         publishHUD()
     }
 
@@ -308,7 +330,9 @@ final class GameSession: ObservableObject, AimInputDelegate {
         orbs.update(time: simTime)
         processContacts()
 
-        let result = structure.update()
+        let result = structure.update(tuning: tuning)
+        effects.updateDebrisTrails(blocks: structure.activeBlocks)
+        sceneManager.updateCamera(dt: Float(dt))
         if result.newlyDisplacedTargets > 0 {
             displacedThisShot += result.newlyDisplacedTargets
             checkForMajorCollapse()
@@ -325,10 +349,13 @@ final class GameSession: ObservableObject, AimInputDelegate {
         switch gameManager.phase {
         case .resolving:
             let progress = structure.progress
+            // Settle-aware completion (§11): every block on the platform is
+            // slow AND nothing significant has collided for a short while.
+            let quiet = simTime - lastSignificantCollisionTime >= GameRules.quietTimeAfterCollision
             let ended = gameManager.shouldEndResolution(
                 at: simTime,
                 orbResolved: orbs.isResolved(currentOrb, time: simTime, settleSpeed: tuning.settleSpeedThreshold * 2),
-                structureSettled: structure.isSettled(threshold: tuning.settleSpeedThreshold),
+                structureSettled: quiet && structure.isSettled(threshold: tuning.settleSpeedThreshold),
                 objectiveMet: progress >= level.victoryThreshold)
             if ended {
                 handle(phase: gameManager.evaluate(progress: progress, at: simTime))
@@ -346,14 +373,16 @@ final class GameSession: ObservableObject, AimInputDelegate {
         switch phase {
         case .aiming:
             currentOrb = nil
+            sceneManager.follow(nil)
             updateTrajectory(emphasis: 0.35)
         case .won(let stars, let shotsUsed):
             progressStore.recordCompletion(levelIndex: levelIndex, levelID: level.id, stars: stars,
                                            levelCount: levelManager.count)
             trajectory.hide()
-            // Let the collapse breathe for a moment before the overlay.
+            // Cinematic delay: let the collapse play out before the overlay.
+            let delay = UInt64(GameRules.victoryCinematicDelay * 1_000_000_000)
             Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 600_000_000)
+                try? await Task.sleep(nanoseconds: delay)
                 guard let self, self.levelToken == token else { return }
                 self.audio.play(.victory)
                 self.audio.hapticVictory()
@@ -388,8 +417,8 @@ final class GameSession: ObservableObject, AimInputDelegate {
             let a = contact.nodeA, b = contact.nodeB
             if let orb = orbs.orb(for: a) ?? orbs.orb(for: b) {
                 let other = orb.node === a ? b : a
-                if structure.block(for: other) != nil {
-                    orbHitBlock(orb, contact: contact)
+                if let block = structure.block(for: other) {
+                    orbHitBlock(orb, block: block, contact: contact)
                 } else if contact.impulse > 10 {
                     effects.dust(at: contact.point, intensity: 0.5, time: simTime)
                     audio.play(.blockHit, volume: 0.35, minInterval: 0.1)
@@ -398,16 +427,34 @@ final class GameSession: ObservableObject, AimInputDelegate {
             }
             // Block-on-block or block-on-platform.
             guard contact.impulse > 2.5 else { continue }
+            if gameManager.phase == .resolving { lastSignificantCollisionTime = simTime }
             let intensity = (contact.impulse / 25).clamped(0, 1)
             effects.dust(at: contact.point, intensity: intensity, time: simTime)
             audio.play(.blockHit, volume: 0.15 + 0.45 * intensity, minInterval: 0.06)
         }
     }
 
-    private func orbHitBlock(_ orb: OrbController.Orb, contact: RecordedContact) {
+    private func orbHitBlock(_ orb: OrbController.Orb, block: StructureManager.Block, contact: RecordedContact) {
         let first = orb.impactCount == 0
         guard first || contact.impulse > 6 else { return }
         orb.impactCount += 1
+        lastSignificantCollisionTime = simTime
+
+        // Supplemental destruction impulse (§4.4): once per significant hit,
+        // with a per-orb cooldown and cap so it can never chain-explode.
+        if contact.impulse >= GameRules.significantOrbImpulse || first,
+           orb.supplementalCount < GameRules.maxSupplementalPerOrb,
+           simTime - orb.lastSupplementalTime >= GameRules.supplementalCooldown {
+            orb.supplementalCount += 1
+            orb.lastSupplementalTime = simTime
+            supplementalThisShot += 1
+            let travel = orb.node.physicsBody.map { simd_length($0.velocity.asSIMD) > 2 ? $0.velocity.asSIMD : orb.launchDirection }
+                ?? orb.launchDirection
+            structure.applyDirectHit(on: block, direction: orb.launchDirection, contactImpulse: contact.impulse, tuning: tuning)
+            structure.applyRadialImpulse(at: contact.point, shotDirection: travel, tuning: tuning)
+            effects.groundShockwave(at: contact.point, radius: tuning.radialImpulseRadius)
+            if first { sceneManager.follow(contact.point) }
+        }
         let intensity = max((contact.impulse / 40).clamped(0, 1), first ? 0.6 : 0)
         effects.impact(at: contact.point, intensity: intensity)
         audio.play(.impact, volume: 0.4 + 0.6 * intensity, minInterval: 0.08)
@@ -426,10 +473,16 @@ final class GameSession: ObservableObject, AimInputDelegate {
         if tuning.gravityOverride != previous.gravityOverride {
             sceneManager.setGravity(tuning.gravityOverride ?? level.gravity)
         }
-        if tuning.cameraFieldOfView != previous.cameraFieldOfView {
-            sceneManager.setFieldOfView(tuning.cameraFieldOfView)
+        if tuning.cameraFieldOfView != previous.cameraFieldOfView
+            || tuning.cameraElevation != previous.cameraElevation
+            || tuning.cameraDistance != previous.cameraDistance {
+            sceneManager.frame(level: level, config: tuning)
         }
-        if tuning.blockMass != previous.blockMass
+        effects.shakeIntensity = tuning.cameraShakeIntensity
+        if tuning.standardBlockMass != previous.standardBlockMass
+            || tuning.heavyBlockMass != previous.heavyBlockMass
+            || tuning.abyssFadeDepth != previous.abyssFadeDepth
+            || tuning.abyssCleanupDepth != previous.abyssCleanupDepth
             || tuning.blockFriction != previous.blockFriction
             || tuning.blockRestitution != previous.blockRestitution {
             structure.apply(tuning: tuning)
@@ -491,7 +544,18 @@ final class GameSession: ObservableObject, AimInputDelegate {
             remainingTargets: structure.remainingTargetCount,
             progress: structure.progress,
             timeScale: effects.timeScale,
-            phase: phaseName
+            phase: phaseName,
+            orbSpeed: currentOrb.flatMap { $0.node.physicsBody.map { simd_length($0.velocity.asSIMD) } } ?? 0,
+            orbImpacts: currentOrb?.impactCount ?? 0,
+            supplementalThisShot: supplementalThisShot,
+            totalBlocks: structure.blocks.count,
+            activeBlocks: structure.activeBodyCount,
+            displacedBlocks: structure.displacedCount,
+            fallenBlocks: structure.fallenCount,
+            maxBlockSpeed: structure.maxSpeedOnPlatform(),
+            debrisTrails: effects.activeTrailCount,
+            timeSinceCollision: max(0, simTime - lastSignificantCollisionTime),
+            shotElapsed: gameManager.phase == .resolving ? simTime - gameManager.shotStartTime : 0
         )
     }
 }

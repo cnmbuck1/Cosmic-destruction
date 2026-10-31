@@ -1,5 +1,6 @@
 import SceneKit
 import UIKit
+import simd
 
 /// Creates and owns the 3D environment: space backdrop, lighting, platform,
 /// fixed camera rig, and the containers gameplay systems add nodes into.
@@ -21,12 +22,23 @@ final class SceneManager {
     /// Light reused for impact highlights.
     let impactLight = SCNNode()
 
+    /// Energy pattern under the structure; moved to each level's origin.
+    let energyCircle = PlatformBuilder.makeEnergyCircle()
+
+    // Camera framing (§10). The look target can drift a little toward the
+    // action for a restrained cinematic follow, then eases back.
+    private var baseLookTarget = SIMD3<Float>(0, 1.0, -4.5)
+    private var followTarget: SIMD3<Float>?
+    private var followWeight: Float = 0
+    private var currentLook = SIMD3<Float>(0, 1.0, -4.5)
+
     init() {
         scene.physicsWorld.timeStep = 1.0 / 120.0
         buildBackground()
         buildLighting()
         buildCamera()
         scene.rootNode.addChildNode(PlatformBuilder.makePlatform())
+        scene.rootNode.addChildNode(energyCircle)
         levelRoot.name = "levelRoot"
         effectsRoot.name = "effectsRoot"
         scene.rootNode.addChildNode(levelRoot)
@@ -43,6 +55,45 @@ final class SceneManager {
 
     func setFieldOfView(_ degrees: Float) {
         camera.fieldOfView = CGFloat(degrees)
+    }
+
+    /// Frames the level: camera behind and above the cannon, pulled back for
+    /// wide structures, looking past the structure so the fragment's far edge
+    /// and the abyss stay in view.
+    func frame(level: LevelDefinition, config: DestructionPhysicsConfig) {
+        let origin = level.structureOrigin
+        energyCircle.simdPosition = SIMD3<Float>(origin.x, 0.012, origin.z)
+        let pull = level.cameraPullBack
+        let cannon = GameRules.cannonPosition
+        cameraRig.simdPosition = SIMD3<Float>(0, config.cameraElevation + pull * 0.45,
+                                              cannon.z + config.cameraDistance + pull)
+        baseLookTarget = SIMD3<Float>(origin.x, 0.7, origin.z - 0.6)
+        currentLook = baseLookTarget
+        followTarget = nil
+        followWeight = 0
+        cameraRig.simdLook(at: currentLook)
+        setFieldOfView(config.cameraFieldOfView)
+    }
+
+    /// Restrained cinematic follow: leans the view up to 18% toward a point.
+    func follow(_ point: SIMD3<Float>?) {
+        if let point { followTarget = point }
+        followWeight = point == nil ? 0 : 0.18
+    }
+
+    func updateCamera(dt: Float) {
+        var goal = baseLookTarget
+        if let target = followTarget, followWeight > 0 {
+            var clamped = target
+            clamped.y = clamped.y.clamped(-1, 4)
+            goal += (clamped - baseLookTarget) * followWeight
+        }
+        let k = 1 - exp(-dt * 2.5)
+        let next = currentLook + (goal - currentLook) * k
+        if simd_distance(next, currentLook) > 0.0001 {
+            currentLook = next
+            cameraRig.simdLook(at: currentLook)
+        }
     }
 
     /// Removes all level content (structure blocks, orbs, transient effects).
@@ -85,16 +136,17 @@ final class SceneManager {
         planetNode.runAction(.repeatForever(.rotateBy(x: 0, y: 0.2, z: 0, duration: 30)))
         scene.rootNode.addChildNode(planetNode)
 
-        // Small far moon.
-        let moon = SCNSphere(radius: 4)
-        let moonMat = SCNMaterial()
-        moonMat.lightingModel = .constant
-        moonMat.diffuse.contents = UIColor(red: 0.25, green: 0.4, blue: 0.5, alpha: 1)
-        moon.materials = [moonMat]
-        let moonNode = SCNNode(geometry: moon)
-        moonNode.position = SCNVector3(x: 85, y: 55, z: -170)
-        moonNode.castsShadow = false
-        scene.rootNode.addChildNode(moonNode)
+        // A faint violet glow deep below the fragment gives the void depth.
+        let glow = SCNPlane(width: 60, height: 60)
+        let glowMat = MaterialLibrary.glow(MaterialLibrary.shared.glowImage)
+        glowMat.multiply.contents = UIColor(red: 0.22, green: 0.12, blue: 0.45, alpha: 1)
+        glow.materials = [glowMat]
+        let glowNode = SCNNode(geometry: glow)
+        glowNode.position = SCNVector3(x: 0, y: -26, z: -12)
+        glowNode.constraints = [SCNBillboardConstraint()]
+        glowNode.castsShadow = false
+        glowNode.renderingOrder = -10
+        scene.rootNode.addChildNode(glowNode)
     }
 
     // MARK: Lighting
@@ -137,10 +189,10 @@ final class SceneManager {
         rimNode.look(at: SCNVector3(x: 0, y: 1, z: 0))
         scene.rootNode.addChildNode(rimNode)
 
-        // Soft magenta accent near the arena floor.
+        // Soft violet accent near the arena floor.
         let accent = SCNLight()
         accent.type = .omni
-        accent.color = Palette.magenta
+        accent.color = Palette.purple
         accent.intensity = 250
         accent.attenuationStartDistance = 2
         accent.attenuationEndDistance = 12
@@ -179,10 +231,9 @@ final class SceneManager {
         camera.vignettingPower = 0.8
         cameraNode.camera = camera
 
-        cameraRig.position = SCNVector3(x: 0, y: 7.0, z: 10.5)
         cameraRig.addChildNode(shakeNode)
         shakeNode.addChildNode(cameraNode)
         scene.rootNode.addChildNode(cameraRig)
-        cameraRig.look(at: SCNVector3(x: 0, y: 1.0, z: -4.5))
+        frame(level: Levels.all[0], config: DestructionPhysicsConfig())
     }
 }
