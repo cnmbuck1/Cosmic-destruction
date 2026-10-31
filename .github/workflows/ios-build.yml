@@ -47,7 +47,8 @@ jobs:
           if ! xcrun simctl spawn "$UDID" launchctl list | grep -q cosmicdestruction; then
             echo "App is not running: it crashed during the smoke test"; exit 1
           fi
-          xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmicdestruction
+          xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmicdestruction || true
+          sleep 2
           xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmicdestruction
           sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/0-main-menu.png
       - name: Upload screenshots

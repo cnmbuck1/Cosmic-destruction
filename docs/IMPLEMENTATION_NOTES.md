@@ -76,7 +76,7 @@ means replacing `Scene/`, `Gameplay/`, `Effects/` and `GameSession`, while
 | Block mass | 1 kg per 0.9 m cube (heavy ×3.5, scaled by volume) |
 | Block friction / restitution | 0.7 / 0.08 |
 | Physics timestep | 1/120 s |
-| Camera | horizontal FOV 66°, fixed behind and above the cannon |
+| Camera | horizontal FOV 50°, fixed behind and above the cannon |
 
 These values have **not been playtested on a device yet**. Use the debug
 overlay sliders to tune feel, then copy the values you like back into

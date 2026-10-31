@@ -179,10 +179,10 @@ final class SceneManager {
         camera.vignettingPower = 0.8
         cameraNode.camera = camera
 
-        cameraRig.position = SCNVector3(x: 0, y: 4.6, z: 11.2)
+        cameraRig.position = SCNVector3(x: 0, y: 7.0, z: 10.5)
         cameraRig.addChildNode(shakeNode)
         shakeNode.addChildNode(cameraNode)
         scene.rootNode.addChildNode(cameraRig)
-        cameraRig.look(at: SCNVector3(x: 0, y: 1.8, z: -3.5))
+        cameraRig.look(at: SCNVector3(x: 0, y: 1.0, z: -4.5))
     }
 }

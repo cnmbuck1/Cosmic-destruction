@@ -28,7 +28,7 @@ struct PhysicsTuning: Equatable {
     var settleSpeedThreshold: Float = 0.35
 
     // Camera
-    var cameraFieldOfView: Float = 66
+    var cameraFieldOfView: Float = 50
 
     /// When non-nil, overrides the level's gravity (debug only).
     var gravityOverride: Float? = nil
