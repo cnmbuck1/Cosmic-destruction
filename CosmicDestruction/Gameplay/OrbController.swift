@@ -14,6 +14,10 @@ final class OrbController {
         /// Supplemental radial impulses triggered by this orb (capped per orb).
         var supplementalCount = 0
         var lastSupplementalTime: TimeInterval = -.infinity
+        /// Velocity recorded at the end of the previous frame. SceneKit reports
+        /// contacts after resolving them, so this is the orb's *incoming*
+        /// velocity when a new contact arrives.
+        var previousVelocity: SIMD3<Float> = .zero
 
         init(node: SCNNode, launchTime: TimeInterval, launchDirection: SIMD3<Float>) {
             self.node = node
@@ -64,12 +68,20 @@ final class OrbController {
 
         parent?.addChildNode(node)
         let orb = Orb(node: node, launchTime: time, launchDirection: direction)
+        orb.previousVelocity = direction * tuning.launchSpeed
         orbs.append(orb)
         byNode[ObjectIdentifier(node)] = orb
         return orb
     }
 
     func orb(for node: SCNNode) -> Orb? { byNode[ObjectIdentifier(node)] }
+
+    /// Call once per frame after contacts are processed.
+    func recordVelocities() {
+        for orb in orbs {
+            if let v = orb.node.physicsBody?.velocity.asSIMD { orb.previousVelocity = v }
+        }
+    }
 
     /// Removes orbs that fell into the abyss or exceeded their lifetime.
     func update(time: TimeInterval) {

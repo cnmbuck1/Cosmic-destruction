@@ -1,6 +1,6 @@
 import Foundation
 
-/// The three hand-designed levels (build sheet 2.0 §7). Positions are fully
+/// The three hand-designed levels (build sheet 2.0 §7; Level 1 redesigned in build 3.0). Positions are fully
 /// deterministic; there is no procedural generation.
 ///
 /// Every piece is placed with a small vertical gap (`g`) so rigid bodies
@@ -27,43 +27,46 @@ enum Levels {
 
     // MARK: Level 1 — Lunar Gateway
 
-    /// A gateway: two twin-column towers on heavy plinths carry a lintel beam
-    /// with a glowing core and angular finials. Knock out either tower and the
-    /// lintel and everything on it comes down. 21 pieces (19 targets).
+    /// Build 3.0: three separate pieces (left pylon, central gate, right
+    /// pylon), so one direct hit wrecks one piece and maybe part of a
+    /// neighbour, never the whole site. A new player needs about 2–3 shots for
+    /// the 60% target. 24 pieces (21 targets).
     static let lunarGateway: LevelDefinition = {
         var b = Builder()
-        var capitalTop: Float = 0
-        for x in [-1.7, 1.7] as [Float] {
-            let plinth = b.put(.heavy, [1.3, 0.4, 1.3], x: x, z: 0, base: 0, target: false)
+        // Pylons: twin stacked columns on a heavy plinth, a capital, a cube and a point.
+        for x in [-2.3, 2.3] as [Float] {
+            let plinth = b.put(.heavy, [1.2, 0.4, 1.2], x: x, z: 0, base: 0, target: false)
             var top: Float = 0
             for z in [-0.3, 0.3] as [Float] {
-                let lower = b.put(.column, [0.42, 1.2, 0.42], x: x, z: z, base: plinth)
-                top = b.put(.column, [0.42, 1.2, 0.42], x: x, z: z, base: lower)
+                let lower = b.put(.column, [0.4, 0.95, 0.4], x: x, z: z, base: plinth)
+                top = b.put(.column, [0.4, 0.95, 0.4], x: x, z: z, base: lower)
             }
-            capitalTop = b.put(.standard, [1.1, 0.3, 1.1], x: x, z: 0, base: top)
+            let cap = b.put(.standard, [1.0, 0.3, 1.0], x: x, z: 0, base: top)
+            let cube = b.put(.standard, [0.6, 0.6, 0.6], x: x, z: 0, base: cap)
+            b.put(.wedge, [0.7, 0.45, 0.7], x: x, z: 0, base: cube)
         }
-        let lintelTop = b.put(.beam, [4.6, 0.45, 0.9], x: 0, z: 0, base: capitalTop)
-        let coreTop = b.put(.energy, [0.7, 0.7, 0.7], x: 0, z: 0, base: lintelTop)
-        b.put(.wedge, [0.9, 0.55, 0.7], x: 0, z: 0, base: coreTop)
-        for x in [-1.0, 1.0] as [Float] {
-            let cubeTop = b.put(.standard, [0.6, 0.6, 0.6], x: x, z: 0, base: lintelTop)
-            b.put(.wedge, [0.6, 0.4, 0.6], x: x, z: 0, base: cubeTop)
+        // Central gate: two stacked column pairs carry a lintel, an energy core and a crown.
+        let gateBase = b.put(.heavy, [1.5, 0.35, 1.0], x: 0, z: 0, base: 0, target: false)
+        var gateTop: Float = 0
+        for x in [-0.5, 0.5] as [Float] {
+            let lower = b.put(.column, [0.4, 0.9, 0.4], x: x, z: 0, base: gateBase)
+            gateTop = b.put(.column, [0.4, 0.9, 0.4], x: x, z: 0, base: lower)
         }
-        for x in [-1.85, 1.85] as [Float] {
-            b.put(.wedge, [0.8, 0.5, 0.9], x: x, z: 0, base: lintelTop)
-        }
+        let lintel = b.put(.beam, [1.6, 0.4, 0.8], x: 0, z: 0, base: gateTop)
+        let coreTop = b.put(.energy, [0.65, 0.65, 0.65], x: 0, z: 0, base: lintel)
+        b.put(.wedge, [0.8, 0.5, 0.7], x: 0, z: 0, base: coreTop)
         return LevelDefinition(
             id: 1,
             name: "Lunar Gateway",
-            tagline: "Break a tower and the gate falls.",
+            tagline: "Topple the gate and both pylons.",
             difficulty: "Easy",
-            gravity: -12,
-            maxShots: 3,
-            victoryThreshold: 0.8,
-            starShotThresholds: [1, 2, 3],
-            structureOrigin: [0, 0, -4.2],
+            gravity: -9.5,
+            maxShots: 5,
+            victoryThreshold: 0.6,
+            starShotThresholds: [2, 3, 5],
+            structureOrigin: [0, 0, -3.4],
             blocks: b.blocks,
-            defaultElevation: 20
+            defaultElevation: 5
         )
     }()
 
@@ -129,13 +132,14 @@ enum Levels {
             name: "Twin Spires",
             tagline: "Find the strike that drops both.",
             difficulty: "Moderate",
-            gravity: -12,
-            maxShots: 3,
-            victoryThreshold: 0.8,
-            starShotThresholds: [1, 2, 3],
-            structureOrigin: [0, 0, -4.2],
+            gravity: -10,
+            maxShots: 5,
+            victoryThreshold: 0.7,
+            starShotThresholds: [2, 3, 5],
+            structureOrigin: [0, 0, -3.4],
             blocks: b.blocks,
-            defaultElevation: 14
+            cameraPullBack: 0.3,
+            defaultElevation: 8
         )
     }()
 
@@ -195,14 +199,14 @@ enum Levels {
             name: "Orbital Citadel",
             tagline: "Low gravity. Choose: supports or core.",
             difficulty: "Challenging",
-            gravity: -10,
-            maxShots: 3,
-            victoryThreshold: 0.8,
-            starShotThresholds: [1, 2, 3],
-            structureOrigin: [0, 0, -4.4],
+            gravity: -9,
+            maxShots: 5,
+            victoryThreshold: 0.7,
+            starShotThresholds: [2, 3, 5],
+            structureOrigin: [0, 0, -3.1],
             blocks: b.blocks,
-            cameraPullBack: 0.8,
-            defaultElevation: 17
+            cameraPullBack: 0.9,
+            defaultElevation: 9
         )
     }()
 }

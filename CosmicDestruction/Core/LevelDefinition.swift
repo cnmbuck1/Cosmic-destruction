@@ -61,7 +61,8 @@ struct LevelDefinition: Identifiable, Equatable {
     /// Vertical gravity in m/s² (negative = down).
     let gravity: Float
     let maxShots: Int
-    /// Fraction (0...1) of target blocks that must be removed.
+    /// Fraction (0...1) of target blocks that must be structurally destroyed
+    /// (displaced, tipped over, or fallen) to win.
     let victoryThreshold: Float
     /// Max shots used to earn 3, 2 and 1 stars respectively.
     let starShotThresholds: [Int]
