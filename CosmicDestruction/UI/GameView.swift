@@ -29,6 +29,14 @@ struct GameView: View {
         .animation(.easeInOut(duration: 0.25), value: session.overlay)
         .animation(.easeInOut(duration: 0.2), value: session.isPaused)
         .animation(.easeInOut(duration: 0.2), value: session.showDebugPanel)
+        #if DEBUG
+        .task {
+            // `-SmokeTestAutoFire` fires one shot at the default aim after 2 s (CI smoke test).
+            guard ProcessInfo.processInfo.arguments.contains("-SmokeTestAutoFire") else { return }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            session.debugFire()
+        }
+        #endif
     }
 
     private var debugAvailable: Bool {

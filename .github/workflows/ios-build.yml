@@ -19,6 +19,38 @@ jobs:
             -project CosmicDestruction.xcodeproj \
             -scheme CosmicDestruction \
             -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             build
+      - name: Smoke test (launch, auto-fire, screenshots)
+        run: |
+          set -euo pipefail
+          APP=build/Build/Products/Debug-iphonesimulator/CosmicDestruction.app
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)["devices"]
+          c=[x for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")]
+          print(c[-1]["udid"])')
+          echo "Using simulator $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p screenshots
+          xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmicdestruction -SmokeTestLevel 1 -SmokeTestAutoFire
+          sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/1-level-loaded.png
+          sleep 1;  xcrun simctl io "$UDID" screenshot screenshots/2-impact.png
+          sleep 5;  xcrun simctl io "$UDID" screenshot screenshots/3-after-shot.png
+          # Fail if the app crashed.
+          if ! xcrun simctl spawn "$UDID" launchctl list | grep -q cosmicdestruction; then
+            echo "App is not running: it crashed during the smoke test"; exit 1
+          fi
+          xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmicdestruction
+          xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmicdestruction
+          sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/0-main-menu.png
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-screenshots
+          path: screenshots/

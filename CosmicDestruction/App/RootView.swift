@@ -12,7 +12,18 @@ enum AppScreen: Equatable {
 struct RootView: View {
     @EnvironmentObject private var progress: ProgressStore
     @EnvironmentObject private var settings: SettingsStore
-    @State private var screen: AppScreen = .menu
+    @State private var screen: AppScreen = RootView.initialScreen
+
+    /// Debug-only smoke-test hook: `-SmokeTestLevel N` (1-based) opens that level directly.
+    private static var initialScreen: AppScreen {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-SmokeTestLevel"), i + 1 < args.count, let n = Int(args[i + 1]) {
+            return .game(levelIndex: max(0, n - 1))
+        }
+        #endif
+        return .menu
+    }
 
     var body: some View {
         ZStack {

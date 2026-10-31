@@ -264,6 +264,14 @@ final class GameSession: ObservableObject, AimInputDelegate {
 
     // MARK: Firing
 
+    #if DEBUG
+    /// Smoke-test hook: fires at the current aim without touch input.
+    func debugFire() {
+        guard canAim else { return }
+        fire()
+    }
+    #endif
+
     private func fire() {
         guard canAim, gameManager.registerShot(at: simTime) else { return }
         if !stabilizersReleased {
