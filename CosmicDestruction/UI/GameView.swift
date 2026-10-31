@@ -31,13 +31,65 @@ struct GameView: View {
         .animation(.easeInOut(duration: 0.2), value: session.showDebugPanel)
         #if DEBUG
         .task {
-            // `-SmokeTestAutoFire` fires one shot at the default aim after 2 s (CI smoke test).
-            guard ProcessInfo.processInfo.arguments.contains("-SmokeTestAutoFire") else { return }
+            // CI smoke test hooks:
+            // `-SmokeTestAutoFire` fires one shot at the default aim after 2 s.
+            // `-SmokeTestTargets "x,y,z;x,y,z"` aims at each world point in turn and
+            // fires as soon as the previous shot resolves, appending a summary line
+            // per shot to Documents/smoke-results.txt.
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-SmokeTestTargets"), i + 1 < args.count {
+                let targets = args[i + 1].split(separator: ";").compactMap { item -> SIMD3<Float>? in
+                    let v = item.split(separator: ",").compactMap { Float($0.trimmingCharacters(in: .whitespaces)) }
+                    return v.count == 3 ? SIMD3<Float>(v[0], v[1], v[2]) : nil
+                }
+                await runSmokeTargets(targets)
+                return
+            }
+            guard args.contains("-SmokeTestAutoFire") else { return }
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             session.debugFire()
         }
         #endif
     }
+
+    #if DEBUG
+    @MainActor
+    private func runSmokeTargets(_ targets: [SIMD3<Float>]) async {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("smoke-results.txt")
+        var log = "level \(session.level.id) \(session.level.name)\n"
+        func write() { try? log.write(to: url, atomically: true, encoding: .utf8) }
+        write()
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        for (n, target) in targets.enumerated() {
+            // Wait (up to 15 s) for the previous shot to resolve.
+            var waited = 0
+            while !session.debugCanFire, waited < 60 {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                waited += 1
+            }
+            guard session.debugCanFire else { break }
+            let aim = session.debugAim(at: target)
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            session.debugFire()
+            log += String(format: "shot %ld target (%.2f, %.2f, %.2f) yaw %.1f el %.1f\n",
+                          n + 1, target.x, target.y, target.z, aim.yaw, aim.elevation)
+            write()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            waited = 0
+            while !session.debugCanFire, session.overlay == .none, waited < 60 {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                waited += 1
+            }
+            log += "  after: \(session.debugSummary)\n"
+            write()
+            if session.overlay != .none { break }
+        }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        log += "final: \(session.debugSummary)\n"
+        write()
+    }
+    #endif
 
     private var debugAvailable: Bool {
         #if DEBUG
@@ -50,9 +102,9 @@ struct GameView: View {
     @ViewBuilder
     private var overlay: some View {
         switch session.overlay {
-        case .victory(let stars, let shotsUsed, let hasNext):
+        case .victory(let stars, let shotsUsed, let abyssCount, let score, let hasNext):
             VictoryOverlay(
-                stars: stars, shotsUsed: shotsUsed, hasNextLevel: hasNext,
+                stars: stars, shotsUsed: shotsUsed, abyssCount: abyssCount, score: score, hasNextLevel: hasNext,
                 onNext: { session.nextLevel() },
                 onReplay: { session.restart() },
                 onMenu: leaveGame

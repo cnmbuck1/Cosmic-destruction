@@ -3,8 +3,8 @@ import UIKit
 import simd
 
 /// Builds destructible structures from level data and tracks every block:
-/// target removal, displacement, velocity safety clamps, the supplemental
-/// radial impulse, and abyss fade-out/cleanup (via AbyssCleanupManager).
+/// structural displacement, abyss removal, velocity safety clamps, the
+/// high-energy impact, and abyss fade-out/cleanup (via AbyssCleanupManager).
 @MainActor
 final class StructureManager {
     final class Block {
@@ -14,6 +14,8 @@ final class StructureManager {
         let visual: SCNNode
         let spec: BlockSpec
         let startPosition: SIMD3<Float>
+        /// The block's up axis when placed, for the tilt test.
+        let startUp: SIMD3<Float>
         var isRemoved = false
         var isDisplaced = false
         var isGone = false
@@ -24,6 +26,7 @@ final class StructureManager {
             self.visual = visual
             self.spec = spec
             self.startPosition = startPosition
+            startUp = node.simdOrientation.act(SIMD3<Float>(0, 1, 0))
         }
 
         var isTarget: Bool { spec.isTarget }
@@ -165,52 +168,60 @@ final class StructureManager {
         }
     }
 
-    // MARK: Destruction impulses (§4.4)
+    // MARK: High-energy impact (build 3.0 §3)
 
-    /// Supplemental radial impulse around an impact point. Pushes nearby
-    /// blocks away from the impact with quadratic distance falloff, leaning
-    /// along the shot direction and slightly upward. Impulses scale with block
-    /// mass (so light pieces don't rocket away) and are clamped.
-    /// Returns how many blocks were pushed.
+    /// Applies the tunable high-energy impact around an orb hit. Each block
+    /// within the preset radius gets a velocity change along the orb's
+    /// *incoming* direction plus horizontal radial scatter and upward lift,
+    /// scaled by distance falloff and the hit's energy (0.3...1.2, where 1 is a
+    /// full-speed first hit). The struck block counts as distance 0. Heavier
+    /// blocks resist a little. Blocks also get tumble about the axis
+    /// perpendicular to their push. Returns how many blocks were pushed.
     @discardableResult
-    func applyRadialImpulse(at center: SIMD3<Float>, shotDirection: SIMD3<Float>, tuning: PhysicsTuning) -> Int {
-        let radius = max(0.1, tuning.radialImpulseRadius)
-        var forward = SIMD3<Float>(shotDirection.x, 0, shotDirection.z)
+    func applyImpact(at center: SIMD3<Float>, incomingDirection: SIMD3<Float>, energy: Float,
+                     struck: Block?, preset: ImpactPreset) -> Int {
+        let radius = max(0.1, preset.radius)
+        var forward = incomingDirection
+        forward.y = max(forward.y, -0.2)
         forward = simd_length(forward) > 0.001 ? simd_normalize(forward) : SIMD3<Float>(0, 0, -1)
         var pushed = 0
         for block in blocks where !block.isGone && !block.isRemoved {
             guard let body = block.node.physicsBody else { continue }
             let p = block.node.presentation.simdWorldPosition
             let offset = p - center
-            let distance = simd_length(offset)
+            let distance = block === struck ? 0 : simd_length(offset)
             guard distance < radius else { continue }
-            let falloff = (1 - distance / radius) * (1 - distance / radius)
+            let falloff = powf(1 - distance / radius, preset.falloffExponent)
 
             var radial = SIMD3<Float>(offset.x, 0, offset.z)
-            radial = simd_length(radial) > 0.001 ? simd_normalize(radial) : forward
-            let bias = tuning.forwardBias.clamped(0, 1)
-            var horizontal = radial * (1 - bias) + forward * bias
-            horizontal = simd_length(horizontal) > 0.001 ? simd_normalize(horizontal) : forward
-            let up = tuning.verticalImpulseComponent.clamped(0, 1)
-            let direction = simd_normalize(horizontal * (1 - up) + SIMD3<Float>(0, up, 0))
+            if simd_length(radial) < 0.001 { radial = SIMD3<Float>(forward.x, 0, forward.z) }
+            radial = simd_length(radial) > 0.001 ? simd_normalize(radial) : SIMD3<Float>(0, 0, -1)
+            var direction = forward * preset.forwardWeight + radial * preset.radialWeight
+            direction.y += preset.upwardWeight
+            direction = simd_normalize(direction)
 
             let mass = Float(body.mass)
-            let magnitude = min(tuning.radialImpulseStrength * falloff * mass, tuning.maxSupplementalImpulse)
-            guard magnitude > 0.01 else { continue }
-            body.applyForce(SCNVector3(simd: direction * magnitude), asImpulse: true)
-            // A small spin makes debris tumble instead of sliding.
-            body.applyTorque(SCNVector4(x: direction.z, y: 0, z: -direction.x, w: magnitude * 0.08), asImpulse: true)
+            let resist = powf(0.55 / max(mass, 0.01), 0.2).clamped(0.6, 1.15)
+            let dv = min(preset.velocityChange * energy * falloff * resist, preset.maxVelocityChange)
+            guard dv >= 0.2 else { continue }
+            // An impulse of mass × dv gives exactly dv and wakes a resting body.
+            body.applyForce(SCNVector3(simd: direction * (dv * mass)), asImpulse: true)
+
+            // Tumble about the axis perpendicular to the push.
+            var axis = SIMD3<Float>(direction.z, 0, -direction.x)
+            axis = simd_length(axis) > 0.01 ? simd_normalize(axis) : SIMD3<Float>(1, 0, 0)
+            let w = preset.spin * falloff * energy * Float.random(in: 0.6...1.4)
+            let current = body.angularVelocity
+            let currentVector = SIMD3<Float>(current.x, current.y, current.z) * current.w
+            let spin = currentVector + SIMD3<Float>(axis.x * w, Float.random(in: -0.25...0.25) * w, axis.z * w)
+            let speed = simd_length(spin)
+            if speed > 0.001 {
+                let n = spin / speed
+                body.angularVelocity = SCNVector4(x: n.x, y: n.y, z: n.z, w: speed)
+            }
             pushed += 1
         }
         return pushed
-    }
-
-    /// Extra push on the directly struck block, along the orb's travel.
-    func applyDirectHit(on block: Block, direction: SIMD3<Float>, contactImpulse: Float, tuning: PhysicsTuning) {
-        guard let body = block.node.physicsBody, tuning.orbImpulseMultiplier > 1 else { return }
-        let extra = min((tuning.orbImpulseMultiplier - 1) * contactImpulse, tuning.maxSupplementalImpulse)
-        guard extra > 0.01, simd_length(direction) > 0.001 else { return }
-        body.applyForce(SCNVector3(simd: simd_normalize(direction) * extra), asImpulse: true)
     }
 
     // MARK: Per-frame
@@ -236,9 +247,16 @@ final class StructureManager {
                 }
             }
 
-            if !block.isDisplaced, simd_distance(p, block.startPosition) > GameRules.blockDisplacedDistance {
-                block.isDisplaced = true
-                if block.isTarget { result.newlyDisplacedTargets += 1 }
+            // Structural destruction (build 3.0 §5): moved well away from its
+            // slot, or tipped over. Small nudges don't count.
+            if !block.isDisplaced {
+                let up = block.node.presentation.simdWorldOrientation.act(SIMD3<Float>(0, 1, 0))
+                let tilt = acosf(simd_dot(up, block.startUp).clamped(-1, 1)) * 180 / .pi
+                if simd_distance(p, block.startPosition) > tuning.scoring.displacedDistance
+                    || tilt > tuning.scoring.displacedTiltDegrees {
+                    block.isDisplaced = true
+                    if block.isTarget { result.newlyDisplacedTargets += 1 }
+                }
             }
 
             if !block.isRemoved {
@@ -271,14 +289,24 @@ final class StructureManager {
 
     var targetCount: Int { blocks.filter(\.isTarget).count }
     var removedTargetCount: Int { blocks.filter { $0.isTarget && $0.isRemoved }.count }
-    var remainingTargetCount: Int { targetCount - removedTargetCount }
+    var remainingTargetCount: Int { targetCount - destroyedTargetCount }
     var displacedCount: Int { blocks.filter(\.isDisplaced).count }
     var fallenCount: Int { blocks.filter(\.isRemoved).count }
+    /// Targets structurally destroyed: displaced, tipped over, or fallen.
+    var destroyedTargetCount: Int { blocks.filter { $0.isTarget && ($0.isDisplaced || $0.isRemoved) }.count }
+    /// Targets launched off the island into the abyss (scored separately as a bonus).
+    var abyssTargetCount: Int { removedTargetCount }
 
-    /// Fraction of target blocks removed (0...1).
+    /// Objective progress (build 3.0 §5): fraction of targets structurally
+    /// destroyed (0...1), not just the ones that fell off.
     var progress: Float {
         let total = targetCount
-        return total == 0 ? 0 : Float(removedTargetCount) / Float(total)
+        return total == 0 ? 0 : Float(destroyedTargetCount) / Float(total)
+    }
+
+    /// Running score: displaced targets plus the abyss bonus.
+    func score(scoring: ScoringConfig) -> Int {
+        destroyedTargetCount * scoring.pointsPerDisplaced + abyssTargetCount * scoring.pointsPerAbyss
     }
 
     var activeBodyCount: Int { blocks.filter { !$0.isGone }.count }

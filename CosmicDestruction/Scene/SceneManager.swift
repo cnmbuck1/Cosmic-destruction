@@ -37,7 +37,7 @@ final class SceneManager {
         buildBackground()
         buildLighting()
         buildCamera()
-        scene.rootNode.addChildNode(PlatformBuilder.makePlatform())
+        scene.rootNode.addChildNode(PlatformBuilder.makePlatform(config: DestructionPhysicsConfig()))
         scene.rootNode.addChildNode(energyCircle)
         levelRoot.name = "levelRoot"
         effectsRoot.name = "effectsRoot"
@@ -57,20 +57,18 @@ final class SceneManager {
         camera.fieldOfView = CGFloat(degrees)
     }
 
-    /// Frames the level: camera behind and above the cannon, pulled back for
-    /// wide structures, looking past the structure so the fragment's far edge
-    /// and the abyss stay in view.
+    /// Frames the level (build 3.0 §2): the camera sits close behind and above
+    /// the cannon and looks at a point just in front of the structure, so the
+    /// structure fills about a third of the screen height while the island's
+    /// side edges and the void around it stay in view.
     func frame(level: LevelDefinition, config: DestructionPhysicsConfig) {
         let origin = level.structureOrigin
         energyCircle.simdPosition = SIMD3<Float>(origin.x, 0.012, origin.z)
         let pull = level.cameraPullBack
         let cannon = GameRules.cannonPosition
-        cameraRig.simdPosition = SIMD3<Float>(0, config.cameraElevation + pull * 0.45,
+        cameraRig.simdPosition = SIMD3<Float>(0, config.cameraElevation + pull * 0.6,
                                               cannon.z + config.cameraDistance + pull)
-        // Looking at a point in front of the structure tilts the view down
-        // (about 32°): structure in the upper third, cannon below, and the
-        // fragment's front edge with the void beneath it at the bottom.
-        baseLookTarget = SIMD3<Float>(origin.x, 0, origin.z + 2.4)
+        baseLookTarget = SIMD3<Float>(origin.x, config.cameraLookHeight, origin.z + config.cameraLookAhead)
         currentLook = baseLookTarget
         followTarget = nil
         followWeight = 0

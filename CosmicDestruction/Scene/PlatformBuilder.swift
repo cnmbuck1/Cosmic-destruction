@@ -2,8 +2,9 @@ import SceneKit
 import UIKit
 import simd
 
-/// Builds the lunar fragment (build sheet 2.0 §8): a broken piece of moon
-/// about 18 × 16 m, suspended over the void. It has an irregular rocky
+/// Builds the lunar fragment: a compact floating island (build 3.0 §1, about
+/// 7.8 × 10 m) suspended over the void, so the structure sits near the far
+/// edge with open space and the island's sides visible around it. It has an irregular rocky
 /// perimeter, a cratered uneven surface around a level central area, layered
 /// strata on its sides, and a tapering rocky root underneath that gives it a
 /// floating-island silhouette. Neon is used sparingly (roughly a quarter of
@@ -20,11 +21,13 @@ enum PlatformBuilder {
         var width: Float
         var depth: Float
         var thickness: Float
+        var centerZ: Float
 
         init(config: DestructionPhysicsConfig) {
             width = config.platformWidth
             depth = config.platformDepth
             thickness = config.platformThickness
+            centerZ = config.platformCenterZ
         }
     }
 
@@ -32,17 +35,14 @@ enum PlatformBuilder {
 
     private static let segmentCount = 96
 
-    /// Irregular rocky perimeter: a soft superellipse with layered harmonic
-    /// noise and a few bites taken out of it. Points are (x, z) in meters,
-    /// ordered by angle.
+    /// Irregular rocky perimeter: a squarish superellipse with layered
+    /// harmonic noise. No bites: the compact island stays nearly convex so its
+    /// physics matches what you see. Points are (x, z) in meters relative to
+    /// the island center, ordered by angle.
     static func outline(_ d: Dimensions) -> [SIMD2<Float>] {
         var rng = SeededRandom(seed: 5)
-        let a = d.width / 2, b = d.depth / 2, n: Float = 2.6
+        let a = d.width / 2, b = d.depth / 2, n: Float = 3.2
         let phases = (0..<4).map { _ in rng.float(0...(2 * .pi)) }
-        // Bites: (angle, width, depth as a fraction of the radius).
-        let bites: [(Float, Float, Float)] = (0..<5).map { _ in
-            (rng.float(0...(2 * .pi)), rng.float(0.12...0.26), rng.float(0.05...0.1))
-        }
         var jitter = (0..<segmentCount).map { _ in rng.float(-1...1) }
         for _ in 0..<2 {
             jitter = jitter.indices.map { i in
@@ -53,19 +53,11 @@ enum PlatformBuilder {
             let t = Float(i) / Float(segmentCount) * 2 * .pi
             let c = cos(t), s = sin(t)
             let r = 1 / pow(pow(abs(c) / a, n) + pow(abs(s) / b, n), 1 / n)
-            let h1: Float = 0.035 * sin(3 * t + phases[0])
-            let h2: Float = 0.025 * sin(5 * t + phases[1])
-            let h3: Float = 0.018 * sin(9 * t + phases[2])
-            let h4: Float = 0.012 * sin(17 * t + phases[3])
-            var k: Float = 0.96 + h1 + h2 + h3 + h4 + 0.03 * jitter[i]
-            for (angle, width, depth) in bites {
-                var delta = abs(t - angle)
-                delta = min(delta, 2 * .pi - delta)
-                if delta < width {
-                    let x = delta / width
-                    k -= depth * (1 - x * x)
-                }
-            }
+            let h1: Float = 0.02 * sin(3 * t + phases[0])
+            let h2: Float = 0.015 * sin(5 * t + phases[1])
+            let h3: Float = 0.012 * sin(9 * t + phases[2])
+            let h4: Float = 0.01 * sin(17 * t + phases[3])
+            var k: Float = 0.97 + h1 + h2 + h3 + h4 + 0.025 * jitter[i]
             // Keep the cannon's ground (front, +Z) whole.
             if s > 0.85 { k = max(k, 0.99) }
             return SIMD2<Float>(c, s) * r * min(k, 1)
@@ -84,19 +76,24 @@ enum PlatformBuilder {
         var rng = SeededRandom(seed: 17)
         var result: [Crater] = []
         var attempts = 0
-        while result.count < 11, attempts < 200 {
+        while result.count < 8, attempts < 200 {
             attempts += 1
             let i = Int(rng.float(0...Float(outline.count - 1)))
-            let s = rng.float(0.8...0.92)
+            // Craters live in the outer rim band only, away from the structure.
+            let s = rng.float(0.88...0.94)
             let c = outline[i] * s
             if simd_distance(c, cannonXZ) < 2.6 { continue }
             if result.contains(where: { simd_distance($0.center, c) < $0.radius + 0.9 }) { continue }
-            result.append(Crater(center: c, radius: rng.float(0.5...1.1), depth: rng.float(0.08...0.16)))
+            result.append(Crater(center: c, radius: rng.float(0.3...0.6), depth: rng.float(0.06...0.12)))
         }
         return result
     }
 
-    private static var cannonXZ: SIMD2<Float> { SIMD2(GameRules.cannonPosition.x, GameRules.cannonPosition.z) }
+    /// The cannon in island-local coordinates (the island is built around its
+    /// own center and then placed at `platformCenterZ`).
+    private static var cannonXZ: SIMD2<Float> {
+        SIMD2(GameRules.cannonPosition.x, GameRules.cannonPosition.z - DestructionPhysicsConfig().platformCenterZ)
+    }
 
     private static func smoothstep(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
         let t = ((x - e0) / (e1 - e0)).clamped(0, 1)
@@ -106,9 +103,9 @@ enum PlatformBuilder {
     /// Visual terrain height at a point on ring `s` (0 = center, 1 = edge).
     /// Exactly 0 over the central play area.
     private static func height(_ p: SIMD2<Float>, s: Float, craters: [Crater]) -> Float {
-        var edge = smoothstep(0.7, 0.93, s)
-        // Keep the ground under and around the cannon level.
-        edge *= smoothstep(1.4, 2.4, simd_distance(p, cannonXZ))
+        // Flat everywhere structures or the cannon stand; uneven only in the outer rim band.
+        var edge = smoothstep(0.86, 0.96, s)
+        edge *= smoothstep(1.2, 1.9, simd_distance(p, cannonXZ))
         guard edge > 0 else { return 0 }
         let x = p.x, z = p.y
         let n1: Float = 0.09 * sin(0.9 * x + 1.3) * sin(0.8 * z + 0.4)
@@ -181,6 +178,7 @@ enum PlatformBuilder {
 
         let root = SCNNode()
         root.name = "platform"
+        root.simdPosition = SIMD3<Float>(0, 0, dims.centerZ)
 
         // Top surface: concentric rings following the outline.
         let rings: [Float] = [0.12, 0.25, 0.38, 0.5, 0.6, 0.68, 0.74, 0.79, 0.835, 0.87, 0.9, 0.925, 0.95, 0.97, 0.985, 1]
@@ -219,8 +217,8 @@ enum PlatformBuilder {
         let rows: [(Float, Float, Float)] = [
             (-0.28, 1.0, 0.05), (-0.55, 0.975, 0.09), (-0.8, 0.99, 0.06), (-1.15, 0.955, 0.1),
             (-1.5, 0.965, 0.07), (-1.95, 0.925, 0.12), (-t, 0.9, 0.1),
-            (-t - 0.9, 0.78, 0.22), (-t - 2.0, 0.62, 0.3), (-t - 3.2, 0.46, 0.32),
-            (-t - 4.4, 0.31, 0.28), (-t - 5.6, 0.18, 0.2), (-t - 6.6, 0.08, 0.12),
+            (-t - 0.7, 0.8, 0.15), (-t - 1.5, 0.64, 0.2), (-t - 2.4, 0.48, 0.22),
+            (-t - 3.3, 0.33, 0.2), (-t - 4.2, 0.19, 0.15), (-t - 5.0, 0.08, 0.1),
         ]
         var rng = SeededRandom(seed: 23)
         var side = MeshBuilder()
@@ -252,7 +250,7 @@ enum PlatformBuilder {
             prevPoints = pts
         }
         // Close the root with a tip.
-        let tip = side.add(SIMD3(0.3, -t - 7.6, -0.4), SIMD2(0, (t + 7.6) / 3))
+        let tip = side.add(SIMD3(0.2, -t - 5.7, -0.3), SIMD2(0, (t + 5.7) / 3))
         for i in 0..<n {
             side.tri(prevRow[i], tip, prevRow[i + 1], facing: SIMD3(0, -1, 0))
         }
@@ -370,7 +368,7 @@ enum PlatformBuilder {
     // MARK: Energy circle
 
     /// Circular energy pattern under the structure (§8). Positioned per level.
-    static func makeEnergyCircle(radius: Float = 3.4) -> SCNNode {
+    static func makeEnergyCircle(radius: Float = 2.9) -> SCNNode {
         let plane = SCNPlane(width: CGFloat(radius * 2), height: CGFloat(radius * 2))
         plane.materials = [MaterialLibrary.shared.energyCircle]
         let node = SCNNode(geometry: plane)

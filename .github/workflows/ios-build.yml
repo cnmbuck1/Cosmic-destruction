@@ -39,23 +39,29 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
           mkdir -p screenshots
-          xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmic-destruction -SmokeTestLevel 1 -SmokeTestAutoFire
+          # Level 1 (build 3.0): direct center hit on the gate, then the left pylon,
+          # then a glancing hit on the right pylon's outer edge. The app logs
+          # progress / void / score after each shot to Documents/smoke-results.txt.
+          xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmic-destruction -SmokeTestLevel 1 \
+            -SmokeTestTargets "0,1.0,-3.0;-2.3,1.0,-3.0;2.75,1.6,-3.0"
           # Capture launchctl output first: piping straight into `grep -q` lets grep
           # exit early, launchctl dies of SIGPIPE, and pipefail reports a false crash.
           app_running() { local jobs; jobs=$(xcrun simctl spawn "$UDID" launchctl list); grep -q cosmic-destruction <<<"$jobs"; }
-          sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/1-level-loaded.png
-          sleep 1;  xcrun simctl io "$UDID" screenshot screenshots/2-impact.png
-          sleep 5;  xcrun simctl io "$UDID" screenshot screenshots/3-after-shot.png
-          # Fail if the app crashed.
+          sleep 3;  xcrun simctl io "$UDID" screenshot screenshots/1-level1-loaded.png
+          sleep 3;  xcrun simctl io "$UDID" screenshot screenshots/2-level1-center-impact.png
+          sleep 1;  xcrun simctl io "$UDID" screenshot screenshots/3-level1-center-debris.png
+          sleep 20; xcrun simctl io "$UDID" screenshot screenshots/4-level1-after-shots.png
           if ! app_running; then
-            echo "App is not running: it crashed during the smoke test"; exit 1
+            echo "App is not running: it crashed during the level 1 smoke test"; exit 1
           fi
+          DATA=$(xcrun simctl get_app_container "$UDID" com.cnmbuckstudios.cosmic-destruction data)
+          echo "---- Level 1 smoke results ----"
+          cat "$DATA/Documents/smoke-results.txt" | tee screenshots/level1-results.txt || echo "(no results file)"
           xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmic-destruction || true
           sleep 2
           xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmic-destruction -SmokeTestLevel 3 -SmokeTestAutoFire
-          sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/4-level3-loaded.png
-          sleep 1;  xcrun simctl io "$UDID" screenshot screenshots/5-level3-impact.png
-          sleep 5;  xcrun simctl io "$UDID" screenshot screenshots/6-level3-after-shot.png
+          sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/5-level3-loaded.png
+          sleep 6;  xcrun simctl io "$UDID" screenshot screenshots/6-level3-after-shot.png
           if ! app_running; then
             echo "App is not running: it crashed on level 3"; exit 1
           fi

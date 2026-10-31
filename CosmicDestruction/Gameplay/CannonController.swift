@@ -103,6 +103,7 @@ final class CannonController {
         let lib = MaterialLibrary.shared
         rootNode.name = "cannon"
         rootNode.simdPosition = GameRules.cannonPosition
+        rootNode.simdScale = SIMD3<Float>(repeating: GameRules.cannonScale)
 
         // Base pedestal with a glowing ring.
         let base = SCNCylinder(radius: 0.95, height: 0.32)

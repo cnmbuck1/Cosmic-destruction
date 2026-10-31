@@ -13,11 +13,16 @@ struct HUDState: Equatable {
     var threshold: Float = 0.8
     var isAiming = false
     var showHint = false
+    /// Targets launched into the abyss (bonus, tracked separately from progress).
+    var abyssCount = 0
+    var score = 0
+    /// Debug impact preset label (A/B/C).
+    var impactPreset = "B"
 }
 
 enum SessionOverlay: Equatable {
     case none
-    case victory(stars: Int, shotsUsed: Int, hasNextLevel: Bool)
+    case victory(stars: Int, shotsUsed: Int, abyssCount: Int, score: Int, hasNextLevel: Bool)
     case failure(progress: Float)
 }
 
@@ -290,6 +295,44 @@ final class GameSession: ObservableObject, AimInputDelegate {
         guard canAim else { return }
         fire()
     }
+
+    /// Smoke-test hook: true when a shot can be fired now.
+    var debugCanFire: Bool { canAim }
+
+    /// Smoke-test hook: aims at a world point. Yaw is refined a few times
+    /// because the muzzle swings with yaw; then the low-arc elevation is found
+    /// by scanning the ballistic drop at the target's horizontal distance.
+    @discardableResult
+    func debugAim(at target: SIMD3<Float>) -> (yaw: Float, elevation: Float) {
+        var yaw: Float = 0
+        for _ in 0..<4 {
+            cannon.setAim(yawDegrees: yaw, elevationDegrees: 0)
+            let m = cannon.muzzleWorldPosition
+            yaw = atan2(target.x - m.x, -(target.z - m.z)) * 180 / .pi
+        }
+        var best: Float = 0, error = Float.greatestFiniteMagnitude
+        var e = GameRules.minElevationDegrees
+        while e <= GameRules.maxElevationDegrees {
+            cannon.setAim(yawDegrees: yaw, elevationDegrees: e)
+            let m = cannon.muzzleWorldPosition, d = cannon.launchDirection, v = tuning.launchSpeed
+            let horizontal = simd_length(SIMD2<Float>(target.x - m.x, target.z - m.z))
+            let t = horizontal / max(0.01, simd_length(SIMD2<Float>(d.x, d.z)) * v)
+            let y = m.y + d.y * v * t + 0.5 * sceneManager.gravity * t * t
+            if abs(y - target.y) < error { error = abs(y - target.y); best = e }
+            e += 0.1
+        }
+        cannon.setAim(yawDegrees: yaw, elevationDegrees: best)
+        updateTrajectory(emphasis: 1)
+        return (yaw, best)
+    }
+
+    /// Smoke-test summary of the level state.
+    var debugSummary: String {
+        String(format: "shots %ld progress %.0f%% destroyed %ld/%ld void %ld score %ld phase %@",
+               gameManager.shotsUsed, structure.progress * 100, structure.destroyedTargetCount,
+               structure.targetCount, structure.abyssTargetCount, structure.score(scoring: tuning.scoring),
+               String(describing: gameManager.phase))
+    }
     #endif
 
     private func fire() {
@@ -329,6 +372,7 @@ final class GameSession: ObservableObject, AimInputDelegate {
         cannon.update(dt: Float(dt))
         orbs.update(time: simTime)
         processContacts()
+        orbs.recordVelocities()
 
         let result = structure.update(tuning: tuning)
         effects.updateDebrisTrails(blocks: structure.activeBlocks)
@@ -337,7 +381,7 @@ final class GameSession: ObservableObject, AimInputDelegate {
             displacedThisShot += result.newlyDisplacedTargets
             checkForMajorCollapse()
         }
-        if result.newlyRemovedTargets > 0 {
+        if result.newlyRemovedTargets > 0 || result.newlyDisplacedTargets > 0 {
             publishHUD()
         }
 
@@ -386,7 +430,11 @@ final class GameSession: ObservableObject, AimInputDelegate {
                 guard let self, self.levelToken == token else { return }
                 self.audio.play(.victory)
                 self.audio.hapticVictory()
-                self.overlay = .victory(stars: stars, shotsUsed: shotsUsed, hasNextLevel: self.hasNextLevel)
+                let final = self.structure.score(scoring: self.tuning.scoring)
+                    + self.gameManager.shotsRemaining * self.tuning.scoring.pointsPerShotLeft
+                self.overlay = .victory(stars: stars, shotsUsed: shotsUsed,
+                                        abyssCount: self.structure.abyssTargetCount, score: final,
+                                        hasNextLevel: self.hasNextLevel)
             }
         case .failed(let progress):
             trajectory.hide()
@@ -440,20 +488,27 @@ final class GameSession: ObservableObject, AimInputDelegate {
         orb.impactCount += 1
         lastSignificantCollisionTime = simTime
 
-        // Supplemental destruction impulse (§4.4): once per significant hit,
-        // with a per-orb cooldown and cap so it can never chain-explode.
+        // High-energy impact (build 3.0 §3): once per significant hit, with a
+        // per-orb cooldown and cap so it can never chain-explode. Direction and
+        // energy come from the orb's incoming velocity (before the collision);
+        // a second hit by the same orb carries half the energy.
         if contact.impulse >= GameRules.significantOrbImpulse || first,
            orb.supplementalCount < GameRules.maxSupplementalPerOrb,
            simTime - orb.lastSupplementalTime >= GameRules.supplementalCooldown {
+            let incoming = orb.previousVelocity
+            let speed = simd_length(incoming)
+            let direction = speed > 1 ? incoming / speed : orb.launchDirection
+            let energy = (speed / max(tuning.launchSpeed, 1)).clamped(0.3, 1.2) * (orb.supplementalCount == 0 ? 1 : 0.5)
             orb.supplementalCount += 1
             orb.lastSupplementalTime = simTime
             supplementalThisShot += 1
-            let travel = orb.node.physicsBody.map { simd_length($0.velocity.asSIMD) > 2 ? $0.velocity.asSIMD : orb.launchDirection }
-                ?? orb.launchDirection
-            structure.applyDirectHit(on: block, direction: orb.launchDirection, contactImpulse: contact.impulse, tuning: tuning)
-            structure.applyRadialImpulse(at: contact.point, shotDirection: travel, tuning: tuning)
-            effects.groundShockwave(at: contact.point, radius: tuning.radialImpulseRadius)
-            if first { sceneManager.follow(contact.point) }
+            structure.applyImpact(at: contact.point, incomingDirection: direction, energy: energy,
+                                  struck: block, preset: tuning.impact)
+            effects.groundShockwave(at: contact.point, radius: tuning.impact.radius, direction: direction)
+            if first {
+                sceneManager.follow(contact.point)
+                effects.strongFlash(at: contact.point, size: 3.2)
+            }
         }
         let intensity = max((contact.impulse / 40).clamped(0, 1), first ? 0.6 : 0)
         effects.impact(at: contact.point, intensity: intensity)
@@ -475,10 +530,13 @@ final class GameSession: ObservableObject, AimInputDelegate {
         }
         if tuning.cameraFieldOfView != previous.cameraFieldOfView
             || tuning.cameraElevation != previous.cameraElevation
-            || tuning.cameraDistance != previous.cameraDistance {
+            || tuning.cameraDistance != previous.cameraDistance
+            || tuning.cameraLookHeight != previous.cameraLookHeight
+            || tuning.cameraLookAhead != previous.cameraLookAhead {
             sceneManager.frame(level: level, config: tuning)
         }
         effects.shakeIntensity = tuning.cameraShakeIntensity
+        if tuning.impact != previous.impact || tuning.scoring != previous.scoring { publishHUD() }
         if tuning.standardBlockMass != previous.standardBlockMass
             || tuning.heavyBlockMass != previous.heavyBlockMass
             || tuning.abyssFadeDepth != previous.abyssFadeDepth
@@ -495,6 +553,13 @@ final class GameSession: ObservableObject, AimInputDelegate {
         tuning = PhysicsTuning()
     }
 
+    /// Debug: cycle impact presets A (moderate) → B (powerful, default) → C (spectacular).
+    func cycleImpactPreset() {
+        let ids = ImpactPreset.ID.allCases
+        let next = ids[(ids.firstIndex(of: tuning.impact.id).map { $0 + 1 } ?? 0) % ids.count]
+        tuning.impact = ImpactPreset.preset(next)
+    }
+
     // MARK: Publishing
 
     private func publishHUD() {
@@ -506,7 +571,10 @@ final class GameSession: ObservableObject, AimInputDelegate {
             progress: structure.progress,
             threshold: level.victoryThreshold,
             isAiming: isDragging,
-            showHint: levelIndex == 0 && gameManager.shotsUsed == 0 && !isDragging
+            showHint: levelIndex == 0 && gameManager.shotsUsed == 0 && !isDragging,
+            abyssCount: structure.abyssTargetCount,
+            score: structure.score(scoring: tuning.scoring),
+            impactPreset: tuning.impact.id.rawValue
         )
         if state != hud { hud = state }
     }
