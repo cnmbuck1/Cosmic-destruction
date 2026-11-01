@@ -67,7 +67,8 @@ final class StructureManager {
             let visual = SCNNode(geometry: geometry(for: spec))
             node.addChildNode(visual)
 
-            let body = SCNPhysicsBody(type: .dynamic, shape: physicsShape(for: spec))
+            // Barriers (shield walls) are fixed: they block shots but never move or count.
+            let body = SCNPhysicsBody(type: spec.kind.isStatic ? .static : .dynamic, shape: physicsShape(for: spec))
             body.categoryBitMask = PhysicsCategory.block
             body.collisionBitMask = PhysicsCategory.block | PhysicsCategory.orb | PhysicsCategory.platform
             body.contactTestBitMask = PhysicsCategory.block | PhysicsCategory.platform
@@ -88,7 +89,7 @@ final class StructureManager {
     }
 
     private func geometry(for spec: BlockSpec) -> SCNGeometry {
-        let key = key(for: spec) + "-\(spec.isTarget)"
+        let key = key(for: spec) + "-\(spec.isTarget)-\(spec.neon?.rawValue ?? "")"
         if let cached = geometryCache[key] { return cached }
         let geometry: SCNGeometry
         switch spec.kind {
@@ -99,7 +100,7 @@ final class StructureManager {
             geometry = SCNBox(width: CGFloat(spec.size.x), height: CGFloat(spec.size.y),
                               length: CGFloat(spec.size.z), chamferRadius: chamfer)
         }
-        geometry.materials = [MaterialLibrary.shared.blockMaterial(kind: spec.kind, isTarget: spec.isTarget)]
+        geometry.materials = [MaterialLibrary.shared.blockMaterial(kind: spec.kind, isTarget: spec.isTarget, neon: spec.neon)]
         geometryCache[key] = geometry
         return geometry
     }
@@ -150,7 +151,7 @@ final class StructureManager {
     }
 
     private func apply(tuning: PhysicsTuning, to block: Block) {
-        guard let body = block.node.physicsBody else { return }
+        guard let body = block.node.physicsBody, !block.spec.kind.isStatic else { return }
         body.mass = CGFloat(Self.mass(for: block.spec, tuning: tuning))
         body.friction = CGFloat(tuning.blockFriction)
         body.restitution = CGFloat(tuning.blockRestitution)
@@ -185,7 +186,7 @@ final class StructureManager {
         forward.y = max(forward.y, -0.2)
         forward = simd_length(forward) > 0.001 ? simd_normalize(forward) : SIMD3<Float>(0, 0, -1)
         var pushed = 0
-        for block in blocks where !block.isGone && !block.isRemoved {
+        for block in blocks where !block.isGone && !block.isRemoved && !block.spec.kind.isStatic {
             guard let body = block.node.physicsBody else { continue }
             let p = block.node.presentation.simdWorldPosition
             let offset = p - center
@@ -201,7 +202,10 @@ final class StructureManager {
             direction = simd_normalize(direction)
 
             let mass = Float(body.mass)
-            let resist = powf(0.55 / max(mass, 0.01), 0.2).clamped(0.6, 1.15)
+            // Light blocks (<= 0.55 kg) scatter a little more; heavier ones resist
+            // increasingly, so armored (reinforced) blocks hold their ground.
+            let ratio = 0.55 / max(mass, 0.01)
+            let resist = mass <= 0.55 ? powf(ratio, 0.2).clamped(1, 1.15) : powf(ratio, 0.6).clamped(0.3, 1)
             let dv = min(preset.velocityChange * energy * falloff * resist, preset.maxVelocityChange)
             guard dv >= 0.2 else { continue }
             // An impulse of mass × dv gives exactly dv and wakes a resting body.

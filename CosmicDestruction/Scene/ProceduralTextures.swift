@@ -333,6 +333,39 @@ enum ProceduralTextures {
         }
     }
 
+    /// Neon trim (build 4): a bright edge frame plus a faint inner line, for
+    /// trimmed structural pieces and reinforced blocks.
+    static func blockTrim(color: UIColor) -> UIImage {
+        let size = CGSize(width: 256, height: 256)
+        return renderer(size).image { ctx in
+            let cg = ctx.cgContext
+            cg.setFillColor(UIColor.black.cgColor)
+            cg.fill(CGRect(origin: .zero, size: size))
+            cg.setStrokeColor(color.cgColor)
+            cg.setLineWidth(12)
+            cg.stroke(CGRect(x: 8, y: 8, width: 240, height: 240))
+            cg.setStrokeColor(color.withAlphaComponent(0.5).cgColor)
+            cg.setLineWidth(3)
+            cg.stroke(CGRect(x: 40, y: 40, width: 176, height: 176))
+        }
+    }
+
+    /// Shield-wall stripe (build 4): a bright horizontal band near the top
+    /// edge and faint lines along the top and bottom.
+    static func barrierBand(color: UIColor) -> UIImage {
+        let size = CGSize(width: 256, height: 256)
+        return renderer(size).image { ctx in
+            let cg = ctx.cgContext
+            cg.setFillColor(UIColor.black.cgColor)
+            cg.fill(CGRect(origin: .zero, size: size))
+            cg.setFillColor(color.cgColor)
+            cg.fill(CGRect(x: 0, y: 40, width: 256, height: 34))
+            cg.setFillColor(color.withAlphaComponent(0.6).cgColor)
+            cg.fill(CGRect(x: 0, y: 0, width: 256, height: 6))
+            cg.fill(CGRect(x: 0, y: 250, width: 256, height: 6))
+        }
+    }
+
     // MARK: Orb
 
     /// Equirectangular emission map with concentric latitude bands, which read

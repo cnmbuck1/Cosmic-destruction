@@ -21,18 +21,23 @@ struct LevelSelectView: View {
                     .neonGlow()
                     .padding(.bottom, 8)
 
-                ForEach(Array(Levels.all.enumerated()), id: \.element.id) { index, level in
-                    let unlocked = progress.isUnlocked(index: index)
-                    Button {
-                        if unlocked { onSelect(index) }
-                    } label: {
-                        LevelCard(level: level, index: index, unlocked: unlocked,
-                                  stars: progress.stars(forLevelID: level.id))
+                // 13 levels (build 4): the list scrolls.
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        ForEach(Array(Levels.all.enumerated()), id: \.element.id) { index, level in
+                            let unlocked = progress.isUnlocked(index: index)
+                            Button {
+                                if unlocked { onSelect(index) }
+                            } label: {
+                                LevelCard(level: level, index: index, unlocked: unlocked,
+                                          stars: progress.stars(forLevelID: level.id))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!unlocked)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!unlocked)
+                    .padding(.bottom, 24)
                 }
-                Spacer()
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -69,7 +74,8 @@ private struct LevelCard: View {
                     .foregroundStyle(Theme.textDim)
             }
         }
-        .padding(18)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Theme.panel)
