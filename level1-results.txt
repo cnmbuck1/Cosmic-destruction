@@ -1,0 +1,6 @@
+level 1 Lunar Gateway
+shot 1 target (0.00, 1.00, -3.00) yaw 0.0 el 3.4
+  after: shots 1 progress 33% destroyed 7/21 void 4 score 1300 phase aiming
+shot 2 target (-2.30, 1.00, -3.00) yaw -19.7 el 3.4
+  after: shots 2 progress 67% destroyed 14/21 void 10 score 2900 phase won(stars: 3, shotsUsed: 2)
+final: shots 2 progress 67% destroyed 14/21 void 10 score 2900 phase won(stars: 3, shotsUsed: 2)
