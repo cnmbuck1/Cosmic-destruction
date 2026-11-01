@@ -1,5 +1,14 @@
 # Implementation notes
 
+## Build 5 (planets every 10 levels, FIRE button, 20 levels)
+
+- Worlds: levels 1–10 are on the Moon, 11–20 on Mars, and 21–80 will be Mercury, Venus, Jupiter, Saturn, Uranus and Neptune. A world is only the look: a painted equirectangular sky with its planet (Earth over the Moon, Phobos and Deimos over Mars, the Sun for Mercury, cloud decks for Venus, and the giants themselves), a ground tint, recolored glowing veins, and relit scenes. Physics stay per level. Data: `Core/WorldTheme.swift` and `WORLDS` in the web preview; sky painting: `Scene/SkyPainter.swift` and `spaceTexture(w)`.
+- Sky placement: the default camera looks down -z, which is u = 0.25 in the sky image (`SkyPainter.viewCenterU`). In portrait the visible sky is a thin band about 5° above to 8° below the horizon, so planets sit near the horizon to the sides of the structure.
+- Arriving on a world shows a "WORLD n · NAME" title card. The level list is grouped by world, and worlds without levels show as coming soon.
+- FIRE button: lifting the finger only sets the aim; the FIRE button (bottom right) launches. Space or Enter also fires in the web preview.
+- Mars levels 14–20 add a log tower (beams laid in alternating directions under an energy core; on armored levels the logs are reinforced). Most Mars levels put shield walls in front, so lobbed shots matter.
+- Fixed in the web preview: cannon.js 0.6.2's sweep-and-prune broadphase sorted bodies by AABB but ended each sweep using bounding spheres, so it skipped contacts between long, thin pieces and some towers collapsed on load. The sweep now uses the AABB. Levels 1–13 balance the same after the fix. SceneKit is not affected.
+
 ## Build 4 (13 levels)
 
 - Levels are authored once, in `web-preview/index.html` (the `LEVELS` block and its structure kit: pylon, gate, ziggurat, spire, bridge, wall). `node tools/export-levels.js` regenerates `CosmicDestruction/Core/Levels.swift`; never edit that file by hand.

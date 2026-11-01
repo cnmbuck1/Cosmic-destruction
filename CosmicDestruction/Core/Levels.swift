@@ -769,7 +769,7 @@ enum Levels {
 
     // MARK: Level 14 — Rust Towers
 
-    /// Strip the log towers layer by layer. 53 pieces (45 targets), 9 shots, 85% to win.
+    /// Strip the log towers layer by layer. 53 pieces (45 targets), 9 shots, 90% to win.
     private static let blocks14: [BlockSpec] = [
         b(.barrier, [-1.9, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .red),
         b(.barrier, [1.9, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .amber),
@@ -833,7 +833,7 @@ enum Levels {
         difficulty: "Expert",
         gravity: -9.5,
         maxShots: 9,
-        victoryThreshold: 0.85,
+        victoryThreshold: 0.9,
         starShotThresholds: [5, 7, 9],
         structureOrigin: [0, 0, -3],
         blocks: blocks14,
@@ -841,82 +841,10 @@ enum Levels {
         defaultElevation: 9
     )
 
-    // MARK: Level 15 — Olympus Steps
+    // MARK: Level 15 — Valles Span
 
-    /// A great stepped mound behind two towers. 51 pieces (45 targets), 9 shots, 92% to win.
+    /// A span between two log towers. 53 pieces (44 targets), 10 shots, 90% to win.
     private static let blocks15: [BlockSpec] = [
-        b(.barrier, [0, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .amber),
-        b(.heavy, [0, 0.154, -0.8], [1.618, 0.3, 1.618], target: false),
-        b(.reinforced, [-0.506, 0.558, -1.306], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [-0.506, 0.558, -0.8], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [-0.506, 0.558, -0.294], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0, 0.558, -1.306], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0, 0.558, -0.8], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0, 0.558, -0.294], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0.506, 0.558, -1.306], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0.506, 0.558, -0.8], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0.506, 0.558, -0.294], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [-0.253, 1.062, -1.053], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [-0.253, 1.062, -0.547], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0.253, 1.062, -1.053], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0.253, 1.062, -0.547], [0.5, 0.5, 0.5], neon: .red),
-        b(.energy, [0, 1.566, -0.8], [0.5, 0.5, 0.5], neon: .amber),
-        b(.wedge, [0, 2.02, -0.8], [0.5, 0.4, 0.5], neon: .amber),
-        b(.heavy, [-2.4, 0.154, 0.9], [1.1, 0.3, 1.1], target: false),
-        b(.reinforced, [-2.4, 0.438, 0.575], [0.95, 0.26, 0.3], neon: .red),
-        b(.reinforced, [-2.4, 0.438, 1.225], [0.95, 0.26, 0.3], neon: .red),
-        b(.reinforced, [-2.725, 0.702, 0.9], [0.3, 0.26, 0.95], neon: .red),
-        b(.reinforced, [-2.075, 0.702, 0.9], [0.3, 0.26, 0.95], neon: .red),
-        b(.reinforced, [-2.4, 0.966, 0.575], [0.95, 0.26, 0.3], neon: .red),
-        b(.reinforced, [-2.4, 0.966, 1.225], [0.95, 0.26, 0.3], neon: .red),
-        b(.reinforced, [-2.725, 1.23, 0.9], [0.3, 0.26, 0.95], neon: .red),
-        b(.reinforced, [-2.075, 1.23, 0.9], [0.3, 0.26, 0.95], neon: .red),
-        b(.energy, [-2.4, 1.614, 0.9], [0.5, 0.5, 0.5], neon: .red),
-        b(.wedge, [-2.4, 2.068, 0.9], [0.5, 0.4, 0.5], neon: .red),
-        b(.heavy, [2.4, 0.154, 0.9], [1.1, 0.3, 1.1], target: false),
-        b(.reinforced, [2.4, 0.438, 0.575], [0.95, 0.26, 0.3], neon: .red),
-        b(.reinforced, [2.4, 0.438, 1.225], [0.95, 0.26, 0.3], neon: .red),
-        b(.reinforced, [2.075, 0.702, 0.9], [0.3, 0.26, 0.95], neon: .red),
-        b(.reinforced, [2.725, 0.702, 0.9], [0.3, 0.26, 0.95], neon: .red),
-        b(.reinforced, [2.4, 0.966, 0.575], [0.95, 0.26, 0.3], neon: .red),
-        b(.reinforced, [2.4, 0.966, 1.225], [0.95, 0.26, 0.3], neon: .red),
-        b(.reinforced, [2.075, 1.23, 0.9], [0.3, 0.26, 0.95], neon: .red),
-        b(.reinforced, [2.725, 1.23, 0.9], [0.3, 0.26, 0.95], neon: .red),
-        b(.energy, [2.4, 1.614, 0.9], [0.5, 0.5, 0.5], neon: .red),
-        b(.wedge, [2.4, 2.068, 0.9], [0.5, 0.4, 0.5], neon: .red),
-        b(.heavy, [-2.2, 0.154, -1.1], [0.9, 0.3, 0.9], target: false),
-        b(.reinforced, [-2.2, 0.693, -1.1], [0.7, 0.77, 0.7], neon: .red),
-        b(.reinforced, [-2.2, 1.412, -1.1], [0.6, 0.66, 0.6], neon: .amber),
-        b(.reinforced, [-2.2, 2.021, -1.1], [0.5, 0.55, 0.5], neon: .red),
-        b(.reinforced, [-2.2, 2.52, -1.1], [0.4, 0.44, 0.4], neon: .amber),
-        b(.wedge, [-2.2, 3.044, -1.1], [0.45, 0.6, 0.45], neon: .amber),
-        b(.heavy, [2.2, 0.154, -1.1], [0.9, 0.3, 0.9], target: false),
-        b(.reinforced, [2.2, 0.693, -1.1], [0.7, 0.77, 0.7], neon: .red),
-        b(.reinforced, [2.2, 1.412, -1.1], [0.6, 0.66, 0.6], neon: .amber),
-        b(.reinforced, [2.2, 2.021, -1.1], [0.5, 0.55, 0.5], neon: .red),
-        b(.reinforced, [2.2, 2.52, -1.1], [0.4, 0.44, 0.4], neon: .amber),
-        b(.wedge, [2.2, 3.044, -1.1], [0.45, 0.6, 0.45], neon: .amber),
-    ]
-
-    static let level15 = LevelDefinition(
-        id: 15,
-        name: "Olympus Steps",
-        tagline: "A great stepped mound behind two towers.",
-        difficulty: "Expert",
-        gravity: -9.5,
-        maxShots: 9,
-        victoryThreshold: 0.92,
-        starShotThresholds: [5, 7, 9],
-        structureOrigin: [0, 0, -3],
-        blocks: blocks15,
-        cameraPullBack: 0.7,
-        defaultElevation: 9
-    )
-
-    // MARK: Level 16 — Valles Span
-
-    /// A span between two log towers. 53 pieces (44 targets), 10 shots, 88% to win.
-    private static let blocks16: [BlockSpec] = [
         b(.barrier, [-1.9, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .red),
         b(.barrier, [1.9, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .red),
         b(.heavy, [-1.2, 0.154, 1], [0.9, 0.3, 0.9], target: false),
@@ -972,27 +900,172 @@ enum Levels {
         b(.wedge, [1.6, 3.044, -1.1], [0.45, 0.6, 0.45], neon: .amber),
     ]
 
-    static let level16 = LevelDefinition(
-        id: 16,
+    static let level15 = LevelDefinition(
+        id: 15,
         name: "Valles Span",
         tagline: "A span between two log towers.",
         difficulty: "Expert",
         gravity: -9.5,
         maxShots: 10,
-        victoryThreshold: 0.88,
+        victoryThreshold: 0.9,
         starShotThresholds: [6, 8, 10],
         structureOrigin: [0, 0, -3],
-        blocks: blocks16,
+        blocks: blocks15,
         cameraPullBack: 0.7,
         defaultElevation: 10
     )
 
-    // MARK: Level 17 — Phobos Array
+    // MARK: Level 16 — Olympus Steps
 
-    /// Lob over the shields to reach the dishes. 50 pieces (42 targets), 10 shots, 90% to win.
+    /// A great stepped mound behind two towers. 51 pieces (45 targets), 10 shots, 90% to win.
+    private static let blocks16: [BlockSpec] = [
+        b(.barrier, [0, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .amber),
+        b(.heavy, [0, 0.154, -0.8], [1.618, 0.3, 1.618], target: false),
+        b(.reinforced, [-0.506, 0.558, -1.306], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [-0.506, 0.558, -0.8], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [-0.506, 0.558, -0.294], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0, 0.558, -1.306], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0, 0.558, -0.8], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0, 0.558, -0.294], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0.506, 0.558, -1.306], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0.506, 0.558, -0.8], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0.506, 0.558, -0.294], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [-0.253, 1.062, -1.053], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [-0.253, 1.062, -0.547], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0.253, 1.062, -1.053], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0.253, 1.062, -0.547], [0.5, 0.5, 0.5], neon: .red),
+        b(.energy, [0, 1.566, -0.8], [0.5, 0.5, 0.5], neon: .amber),
+        b(.wedge, [0, 2.02, -0.8], [0.5, 0.4, 0.5], neon: .amber),
+        b(.heavy, [-2.4, 0.154, 0.9], [1.1, 0.3, 1.1], target: false),
+        b(.reinforced, [-2.4, 0.438, 0.575], [0.95, 0.26, 0.3], neon: .red),
+        b(.reinforced, [-2.4, 0.438, 1.225], [0.95, 0.26, 0.3], neon: .red),
+        b(.reinforced, [-2.725, 0.702, 0.9], [0.3, 0.26, 0.95], neon: .red),
+        b(.reinforced, [-2.075, 0.702, 0.9], [0.3, 0.26, 0.95], neon: .red),
+        b(.reinforced, [-2.4, 0.966, 0.575], [0.95, 0.26, 0.3], neon: .red),
+        b(.reinforced, [-2.4, 0.966, 1.225], [0.95, 0.26, 0.3], neon: .red),
+        b(.reinforced, [-2.725, 1.23, 0.9], [0.3, 0.26, 0.95], neon: .red),
+        b(.reinforced, [-2.075, 1.23, 0.9], [0.3, 0.26, 0.95], neon: .red),
+        b(.energy, [-2.4, 1.614, 0.9], [0.5, 0.5, 0.5], neon: .red),
+        b(.wedge, [-2.4, 2.068, 0.9], [0.5, 0.4, 0.5], neon: .red),
+        b(.heavy, [2.4, 0.154, 0.9], [1.1, 0.3, 1.1], target: false),
+        b(.reinforced, [2.4, 0.438, 0.575], [0.95, 0.26, 0.3], neon: .red),
+        b(.reinforced, [2.4, 0.438, 1.225], [0.95, 0.26, 0.3], neon: .red),
+        b(.reinforced, [2.075, 0.702, 0.9], [0.3, 0.26, 0.95], neon: .red),
+        b(.reinforced, [2.725, 0.702, 0.9], [0.3, 0.26, 0.95], neon: .red),
+        b(.reinforced, [2.4, 0.966, 0.575], [0.95, 0.26, 0.3], neon: .red),
+        b(.reinforced, [2.4, 0.966, 1.225], [0.95, 0.26, 0.3], neon: .red),
+        b(.reinforced, [2.075, 1.23, 0.9], [0.3, 0.26, 0.95], neon: .red),
+        b(.reinforced, [2.725, 1.23, 0.9], [0.3, 0.26, 0.95], neon: .red),
+        b(.energy, [2.4, 1.614, 0.9], [0.5, 0.5, 0.5], neon: .red),
+        b(.wedge, [2.4, 2.068, 0.9], [0.5, 0.4, 0.5], neon: .red),
+        b(.heavy, [-2.2, 0.154, -1.1], [0.9, 0.3, 0.9], target: false),
+        b(.reinforced, [-2.2, 0.693, -1.1], [0.7, 0.77, 0.7], neon: .red),
+        b(.reinforced, [-2.2, 1.412, -1.1], [0.6, 0.66, 0.6], neon: .amber),
+        b(.reinforced, [-2.2, 2.021, -1.1], [0.5, 0.55, 0.5], neon: .red),
+        b(.reinforced, [-2.2, 2.52, -1.1], [0.4, 0.44, 0.4], neon: .amber),
+        b(.wedge, [-2.2, 3.044, -1.1], [0.45, 0.6, 0.45], neon: .amber),
+        b(.heavy, [2.2, 0.154, -1.1], [0.9, 0.3, 0.9], target: false),
+        b(.reinforced, [2.2, 0.693, -1.1], [0.7, 0.77, 0.7], neon: .red),
+        b(.reinforced, [2.2, 1.412, -1.1], [0.6, 0.66, 0.6], neon: .amber),
+        b(.reinforced, [2.2, 2.021, -1.1], [0.5, 0.55, 0.5], neon: .red),
+        b(.reinforced, [2.2, 2.52, -1.1], [0.4, 0.44, 0.4], neon: .amber),
+        b(.wedge, [2.2, 3.044, -1.1], [0.45, 0.6, 0.45], neon: .amber),
+    ]
+
+    static let level16 = LevelDefinition(
+        id: 16,
+        name: "Olympus Steps",
+        tagline: "A great stepped mound behind two towers.",
+        difficulty: "Expert",
+        gravity: -9.5,
+        maxShots: 10,
+        victoryThreshold: 0.9,
+        starShotThresholds: [6, 8, 10],
+        structureOrigin: [0, 0, -3],
+        blocks: blocks16,
+        cameraPullBack: 0.7,
+        defaultElevation: 9
+    )
+
+    // MARK: Level 17 — Red Citadel
+
+    /// Gates, towers and walls. Find a way in. 52 pieces (43 targets), 11 shots, 92% to win.
     private static let blocks17: [BlockSpec] = [
-        b(.barrier, [-1.7, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .red),
-        b(.barrier, [1.7, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .amber),
+        b(.barrier, [-2, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .red),
+        b(.barrier, [0, 0.304, 2], [1.212, 0.6, 0.5], target: false, neon: .amber),
+        b(.barrier, [2, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .red),
+        b(.heavy, [0, 0.179, 1], [1.3, 0.35, 1], target: false),
+        b(.column, [-0.4, 0.808, 1], [0.4, 0.9, 0.4]),
+        b(.column, [-0.4, 1.712, 1], [0.4, 0.9, 0.4]),
+        b(.column, [0.4, 0.808, 1], [0.4, 0.9, 0.4]),
+        b(.column, [0.4, 1.712, 1], [0.4, 0.9, 0.4]),
+        b(.beam, [0, 2.366, 1], [1.4, 0.4, 0.8], neon: .amber),
+        b(.energy, [0, 2.895, 1], [0.65, 0.65, 0.65], neon: .amber),
+        b(.wedge, [0, 3.474, 1], [0.8, 0.5, 0.7], neon: .amber),
+        b(.heavy, [-2.2, 0.154, 0.6], [1, 0.3, 1], target: false),
+        b(.reinforced, [-2.2, 0.438, 0.325], [0.85, 0.26, 0.3], neon: .red),
+        b(.reinforced, [-2.2, 0.438, 0.875], [0.85, 0.26, 0.3], neon: .red),
+        b(.reinforced, [-2.475, 0.702, 0.6], [0.3, 0.26, 0.85], neon: .red),
+        b(.reinforced, [-1.925, 0.702, 0.6], [0.3, 0.26, 0.85], neon: .red),
+        b(.reinforced, [-2.2, 0.966, 0.325], [0.85, 0.26, 0.3], neon: .red),
+        b(.reinforced, [-2.2, 0.966, 0.875], [0.85, 0.26, 0.3], neon: .red),
+        b(.reinforced, [-2.475, 1.23, 0.6], [0.3, 0.26, 0.85], neon: .red),
+        b(.reinforced, [-1.925, 1.23, 0.6], [0.3, 0.26, 0.85], neon: .red),
+        b(.energy, [-2.2, 1.614, 0.6], [0.5, 0.5, 0.5], neon: .red),
+        b(.wedge, [-2.2, 2.068, 0.6], [0.5, 0.4, 0.5], neon: .red),
+        b(.heavy, [2.2, 0.154, 0.6], [1, 0.3, 1], target: false),
+        b(.reinforced, [2.2, 0.438, 0.325], [0.85, 0.26, 0.3], neon: .red),
+        b(.reinforced, [2.2, 0.438, 0.875], [0.85, 0.26, 0.3], neon: .red),
+        b(.reinforced, [1.925, 0.702, 0.6], [0.3, 0.26, 0.85], neon: .red),
+        b(.reinforced, [2.475, 0.702, 0.6], [0.3, 0.26, 0.85], neon: .red),
+        b(.reinforced, [2.2, 0.966, 0.325], [0.85, 0.26, 0.3], neon: .red),
+        b(.reinforced, [2.2, 0.966, 0.875], [0.85, 0.26, 0.3], neon: .red),
+        b(.reinforced, [1.925, 1.23, 0.6], [0.3, 0.26, 0.85], neon: .red),
+        b(.reinforced, [2.475, 1.23, 0.6], [0.3, 0.26, 0.85], neon: .red),
+        b(.energy, [2.2, 1.614, 0.6], [0.5, 0.5, 0.5], neon: .red),
+        b(.wedge, [2.2, 2.068, 0.6], [0.5, 0.4, 0.5], neon: .red),
+        b(.heavy, [0, 0.154, -1], [1.112, 0.3, 1.112], target: false),
+        b(.reinforced, [-0.253, 0.558, -1.253], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [-0.253, 0.558, -0.747], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0.253, 0.558, -1.253], [0.5, 0.5, 0.5], neon: .red),
+        b(.reinforced, [0.253, 0.558, -0.747], [0.5, 0.5, 0.5], neon: .red),
+        b(.energy, [0, 1.062, -1], [0.5, 0.5, 0.5], neon: .amber),
+        b(.wedge, [0, 1.516, -1], [0.5, 0.4, 0.5], neon: .amber),
+        b(.heavy, [-2, 0.154, -1.2], [0.9, 0.3, 0.9], target: false),
+        b(.reinforced, [-2, 0.693, -1.2], [0.7, 0.77, 0.7], neon: .red),
+        b(.reinforced, [-2, 1.412, -1.2], [0.6, 0.66, 0.6], neon: .red),
+        b(.reinforced, [-2, 2.021, -1.2], [0.5, 0.55, 0.5], neon: .red),
+        b(.reinforced, [-2, 2.52, -1.2], [0.4, 0.44, 0.4], neon: .red),
+        b(.wedge, [-2, 3.044, -1.2], [0.45, 0.6, 0.45], neon: .red),
+        b(.heavy, [2, 0.154, -1.2], [0.9, 0.3, 0.9], target: false),
+        b(.reinforced, [2, 0.693, -1.2], [0.7, 0.77, 0.7], neon: .red),
+        b(.reinforced, [2, 1.412, -1.2], [0.6, 0.66, 0.6], neon: .red),
+        b(.reinforced, [2, 2.021, -1.2], [0.5, 0.55, 0.5], neon: .red),
+        b(.reinforced, [2, 2.52, -1.2], [0.4, 0.44, 0.4], neon: .red),
+        b(.wedge, [2, 3.044, -1.2], [0.45, 0.6, 0.45], neon: .red),
+    ]
+
+    static let level17 = LevelDefinition(
+        id: 17,
+        name: "Red Citadel",
+        tagline: "Gates, towers and walls. Find a way in.",
+        difficulty: "Master",
+        gravity: -9.5,
+        maxShots: 11,
+        victoryThreshold: 0.92,
+        starShotThresholds: [7, 9, 11],
+        structureOrigin: [0, 0, -3],
+        blocks: blocks17,
+        cameraPullBack: 0.9,
+        defaultElevation: 11
+    )
+
+    // MARK: Level 18 — Phobos Array
+
+    /// Lob over the shields to reach the towers. 50 pieces (42 targets), 11 shots, 92% to win.
+    private static let blocks18: [BlockSpec] = [
+        b(.barrier, [-1.6, 0.304, 2], [2.424, 0.6, 0.5], target: false, neon: .red),
+        b(.barrier, [1.6, 0.304, 2], [2.424, 0.6, 0.5], target: false, neon: .amber),
         b(.heavy, [-2.4, 0.154, 0.4], [0.95, 0.3, 0.95], target: false),
         b(.reinforced, [-2.4, 0.438, 0.15], [0.8, 0.26, 0.3], neon: .red),
         b(.reinforced, [-2.4, 0.438, 0.65], [0.8, 0.26, 0.3], neon: .red),
@@ -1043,25 +1116,25 @@ enum Levels {
         b(.wedge, [1.6, 2.495, -1.3], [0.7, 0.45, 0.7], neon: .red),
     ]
 
-    static let level17 = LevelDefinition(
-        id: 17,
+    static let level18 = LevelDefinition(
+        id: 18,
         name: "Phobos Array",
-        tagline: "Lob over the shields to reach the dishes.",
-        difficulty: "Expert",
+        tagline: "Lob over the shields to reach the towers.",
+        difficulty: "Master",
         gravity: -9.5,
-        maxShots: 10,
-        victoryThreshold: 0.9,
-        starShotThresholds: [6, 8, 10],
+        maxShots: 11,
+        victoryThreshold: 0.92,
+        starShotThresholds: [7, 9, 11],
         structureOrigin: [0, 0, -3],
-        blocks: blocks17,
+        blocks: blocks18,
         cameraPullBack: 0.8,
         defaultElevation: 10
     )
 
-    // MARK: Level 18 — Dust Devil
+    // MARK: Level 19 — Dust Devil
 
-    /// A ring of spires and towers around the core. 69 pieces (58 targets), 10 shots, 90% to win.
-    private static let blocks18: [BlockSpec] = [
+    /// A ring of spires and towers around the core. 69 pieces (58 targets), 11 shots, 90% to win.
+    private static let blocks19: [BlockSpec] = [
         b(.barrier, [-1.3, 0.304, 2.15], [1.818, 0.6, 0.5], target: false, neon: .amber),
         b(.barrier, [1.3, 0.304, 2.15], [1.818, 0.6, 0.5], target: false, neon: .amber),
         b(.heavy, [0, 0.154, 0], [1.112, 0.3, 1.112], target: false),
@@ -1133,83 +1206,10 @@ enum Levels {
         b(.wedge, [2.0325, 1.804, -0.5358], [0.5, 0.4, 0.5], neon: .red),
     ]
 
-    static let level18 = LevelDefinition(
-        id: 18,
-        name: "Dust Devil",
-        tagline: "A ring of spires and towers around the core.",
-        difficulty: "Master",
-        gravity: -9.5,
-        maxShots: 10,
-        victoryThreshold: 0.9,
-        starShotThresholds: [6, 8, 10],
-        structureOrigin: [0, 0, -3],
-        blocks: blocks18,
-        cameraPullBack: 0.8,
-        defaultElevation: 10
-    )
-
-    // MARK: Level 19 — Red Citadel
-
-    /// Gates, towers and walls. Find a way in. 52 pieces (43 targets), 11 shots, 90% to win.
-    private static let blocks19: [BlockSpec] = [
-        b(.barrier, [-2, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .red),
-        b(.barrier, [0, 0.304, 2], [1.212, 0.6, 0.5], target: false, neon: .amber),
-        b(.barrier, [2, 0.304, 2], [1.818, 0.6, 0.5], target: false, neon: .red),
-        b(.heavy, [0, 0.179, 1], [1.3, 0.35, 1], target: false),
-        b(.column, [-0.4, 0.808, 1], [0.4, 0.9, 0.4]),
-        b(.column, [-0.4, 1.712, 1], [0.4, 0.9, 0.4]),
-        b(.column, [0.4, 0.808, 1], [0.4, 0.9, 0.4]),
-        b(.column, [0.4, 1.712, 1], [0.4, 0.9, 0.4]),
-        b(.beam, [0, 2.366, 1], [1.4, 0.4, 0.8], neon: .amber),
-        b(.energy, [0, 2.895, 1], [0.65, 0.65, 0.65], neon: .amber),
-        b(.wedge, [0, 3.474, 1], [0.8, 0.5, 0.7], neon: .amber),
-        b(.heavy, [-2.2, 0.154, 0.6], [1, 0.3, 1], target: false),
-        b(.reinforced, [-2.2, 0.438, 0.325], [0.85, 0.26, 0.3], neon: .red),
-        b(.reinforced, [-2.2, 0.438, 0.875], [0.85, 0.26, 0.3], neon: .red),
-        b(.reinforced, [-2.475, 0.702, 0.6], [0.3, 0.26, 0.85], neon: .red),
-        b(.reinforced, [-1.925, 0.702, 0.6], [0.3, 0.26, 0.85], neon: .red),
-        b(.reinforced, [-2.2, 0.966, 0.325], [0.85, 0.26, 0.3], neon: .red),
-        b(.reinforced, [-2.2, 0.966, 0.875], [0.85, 0.26, 0.3], neon: .red),
-        b(.reinforced, [-2.475, 1.23, 0.6], [0.3, 0.26, 0.85], neon: .red),
-        b(.reinforced, [-1.925, 1.23, 0.6], [0.3, 0.26, 0.85], neon: .red),
-        b(.energy, [-2.2, 1.614, 0.6], [0.5, 0.5, 0.5], neon: .red),
-        b(.wedge, [-2.2, 2.068, 0.6], [0.5, 0.4, 0.5], neon: .red),
-        b(.heavy, [2.2, 0.154, 0.6], [1, 0.3, 1], target: false),
-        b(.reinforced, [2.2, 0.438, 0.325], [0.85, 0.26, 0.3], neon: .red),
-        b(.reinforced, [2.2, 0.438, 0.875], [0.85, 0.26, 0.3], neon: .red),
-        b(.reinforced, [1.925, 0.702, 0.6], [0.3, 0.26, 0.85], neon: .red),
-        b(.reinforced, [2.475, 0.702, 0.6], [0.3, 0.26, 0.85], neon: .red),
-        b(.reinforced, [2.2, 0.966, 0.325], [0.85, 0.26, 0.3], neon: .red),
-        b(.reinforced, [2.2, 0.966, 0.875], [0.85, 0.26, 0.3], neon: .red),
-        b(.reinforced, [1.925, 1.23, 0.6], [0.3, 0.26, 0.85], neon: .red),
-        b(.reinforced, [2.475, 1.23, 0.6], [0.3, 0.26, 0.85], neon: .red),
-        b(.energy, [2.2, 1.614, 0.6], [0.5, 0.5, 0.5], neon: .red),
-        b(.wedge, [2.2, 2.068, 0.6], [0.5, 0.4, 0.5], neon: .red),
-        b(.heavy, [0, 0.154, -1], [1.112, 0.3, 1.112], target: false),
-        b(.reinforced, [-0.253, 0.558, -1.253], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [-0.253, 0.558, -0.747], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0.253, 0.558, -1.253], [0.5, 0.5, 0.5], neon: .red),
-        b(.reinforced, [0.253, 0.558, -0.747], [0.5, 0.5, 0.5], neon: .red),
-        b(.energy, [0, 1.062, -1], [0.5, 0.5, 0.5], neon: .amber),
-        b(.wedge, [0, 1.516, -1], [0.5, 0.4, 0.5], neon: .amber),
-        b(.heavy, [-2, 0.154, -1.2], [0.9, 0.3, 0.9], target: false),
-        b(.reinforced, [-2, 0.693, -1.2], [0.7, 0.77, 0.7], neon: .red),
-        b(.reinforced, [-2, 1.412, -1.2], [0.6, 0.66, 0.6], neon: .red),
-        b(.reinforced, [-2, 2.021, -1.2], [0.5, 0.55, 0.5], neon: .red),
-        b(.reinforced, [-2, 2.52, -1.2], [0.4, 0.44, 0.4], neon: .red),
-        b(.wedge, [-2, 3.044, -1.2], [0.45, 0.6, 0.45], neon: .red),
-        b(.heavy, [2, 0.154, -1.2], [0.9, 0.3, 0.9], target: false),
-        b(.reinforced, [2, 0.693, -1.2], [0.7, 0.77, 0.7], neon: .red),
-        b(.reinforced, [2, 1.412, -1.2], [0.6, 0.66, 0.6], neon: .red),
-        b(.reinforced, [2, 2.021, -1.2], [0.5, 0.55, 0.5], neon: .red),
-        b(.reinforced, [2, 2.52, -1.2], [0.4, 0.44, 0.4], neon: .red),
-        b(.wedge, [2, 3.044, -1.2], [0.45, 0.6, 0.45], neon: .red),
-    ]
-
     static let level19 = LevelDefinition(
         id: 19,
-        name: "Red Citadel",
-        tagline: "Gates, towers and walls. Find a way in.",
+        name: "Dust Devil",
+        tagline: "A ring of spires and towers around the core.",
         difficulty: "Master",
         gravity: -9.5,
         maxShots: 11,
@@ -1217,15 +1217,16 @@ enum Levels {
         starShotThresholds: [7, 9, 11],
         structureOrigin: [0, 0, -3],
         blocks: blocks19,
-        cameraPullBack: 0.9,
-        defaultElevation: 11
+        cameraPullBack: 0.8,
+        defaultElevation: 10
     )
 
     // MARK: Level 20 — Crown of Mars
 
-    /// Mars's last stand. Leave it all in the dust. 61 pieces (52 targets), 12 shots, 92% to win.
+    /// Mars's last stand. Leave it all in the dust. 62 pieces (52 targets), 12 shots, 95% to win.
     private static let blocks20: [BlockSpec] = [
         b(.barrier, [-1.9, 0.304, 2.05], [1.818, 0.6, 0.5], target: false, neon: .red),
+        b(.barrier, [0, 0.304, 2.05], [1.212, 0.6, 0.5], target: false, neon: .amber),
         b(.barrier, [1.9, 0.304, 2.05], [1.818, 0.6, 0.5], target: false, neon: .red),
         b(.heavy, [-2.6, 0.154, 0.8], [0.95, 0.3, 0.95], target: false),
         b(.reinforced, [-2.6, 0.438, 0.55], [0.8, 0.26, 0.3], neon: .red),
@@ -1295,7 +1296,7 @@ enum Levels {
         difficulty: "Master",
         gravity: -9.5,
         maxShots: 12,
-        victoryThreshold: 0.92,
+        victoryThreshold: 0.95,
         starShotThresholds: [8, 10, 12],
         structureOrigin: [0, 0, -3],
         blocks: blocks20,
