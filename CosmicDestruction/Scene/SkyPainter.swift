@@ -8,9 +8,9 @@ enum SkyPainter {
     static let width: CGFloat = 4096
     static let height: CGFloat = 2048
     /// Horizontal image position the default camera (looking down -z) faces.
-    /// The web build (three.js) uses 0.25. SceneKit also uses 0.25 with u
-    /// growing to the right; checked against CI screenshots.
-    static let viewCenterU: CGFloat = 0.25
+    /// The web build (three.js) uses 0.25. SceneKit centers the image on -z:
+    /// with 0.25, Earth never showed in the Level 1 CI screenshots.
+    static let viewCenterU: CGFloat = 0.5
 
     private typealias Painter = (CGContext, CGPoint, CGFloat) -> Void
 
