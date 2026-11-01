@@ -14,7 +14,7 @@ struct HUDView: View {
                 HUDIconButton(systemName: "pause.fill") { session.pause() }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("LEVEL \(hud.levelNumber)")
+                    Text("\(hud.worldName) · LEVEL \(hud.levelNumber)")
                         .font(Theme.label(11))
                         .tracking(3)
                         .foregroundStyle(Theme.cyan)
@@ -54,23 +54,66 @@ struct HUDView: View {
 
             Spacer()
 
-            if hud.showHint {
-                Text("DRAG TO AIM  ·  RELEASE TO FIRE")
-                    .font(Theme.label(12))
-                    .tracking(2)
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Capsule().fill(Theme.panel))
-                    .overlay(Capsule().stroke(Theme.cyan.opacity(0.4), lineWidth: 1))
-                    .padding(.bottom, 24)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
+            HStack(alignment: .bottom, spacing: 12) {
+                if hud.showHint {
+                    Text("DRAG TO AIM  ·  TAP FIRE")
+                        .font(Theme.label(12))
+                        .tracking(2)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Capsule().fill(Theme.panel))
+                        .overlay(Capsule().stroke(Theme.cyan.opacity(0.4), lineWidth: 1))
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+                Spacer(minLength: 0)
+                FireButton(enabled: hud.canFire) { session.fireButtonPressed() }
             }
+            .padding(.bottom, 18)
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)
         .animation(.easeInOut(duration: 0.25), value: hud.showHint)
+    }
+}
+
+/// Separate FIRE control (build 5): dragging aims, this launches.
+private struct FireButton: View {
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("FIRE")
+                .font(Theme.label(16))
+                .tracking(2.5)
+                .foregroundStyle(.white)
+                .frame(width: 84, height: 84)
+                .background(
+                    Circle().fill(RadialGradient(colors: [Color(red: 1, green: 0.48, blue: 0.84),
+                                                          Color(red: 0.76, green: 0.12, blue: 0.56),
+                                                          Color(red: 0.35, green: 0.05, blue: 0.27)],
+                                                 center: UnitPoint(x: 0.5, y: 0.38), startRadius: 0, endRadius: 46))
+                )
+                .overlay(Circle().stroke(Color(red: 1, green: 0.69, blue: 0.9), lineWidth: 2))
+                .shadow(color: Theme.magenta.opacity(enabled ? 0.75 : 0), radius: 12)
+        }
+        .buttonStyle(FirePressStyle())
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
+        .saturation(enabled ? 1 : 0.3)
+        .animation(.easeOut(duration: 0.2), value: enabled)
+        .accessibilityLabel("Fire")
+    }
+}
+
+private struct FirePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
