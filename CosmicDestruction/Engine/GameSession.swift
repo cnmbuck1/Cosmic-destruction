@@ -465,7 +465,7 @@ final class GameSession: ObservableObject, AimInputDelegate {
             let a = contact.nodeA, b = contact.nodeB
             if let orb = orbs.orb(for: a) ?? orbs.orb(for: b) {
                 let other = orb.node === a ? b : a
-                if let block = structure.block(for: other) {
+                if let block = structure.block(for: other), !block.spec.kind.isStatic {
                     orbHitBlock(orb, block: block, contact: contact)
                 } else if contact.impulse > 10 {
                     effects.dust(at: contact.point, intensity: 0.5, time: simTime)

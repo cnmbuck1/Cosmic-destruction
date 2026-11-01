@@ -14,8 +14,14 @@ enum BlockKind: String, CaseIterable {
     case wedge
     /// Glowing energy core. Important target; reserved for chain reactions later.
     case energy
+    /// Dense armored block with a neon trim (build 4). Resists impacts and toppling.
+    case reinforced
+    /// Fixed shield wall (build 4). Never moves or counts; shots must arc over it.
+    case barrier
 
     var isHeavy: Bool { self == .heavy }
+    /// Barriers are static bodies: they block shots but are not destructible.
+    var isStatic: Bool { self == .barrier }
 
     /// Density relative to the configured standard/heavy mass. Load-bearing
     /// columns are denser so stacks never sit heavy-on-light (which makes
@@ -27,6 +33,25 @@ enum BlockKind: String, CaseIterable {
         case .column: return 2.5
         case .wedge: return 0.8
         case .energy: return 1.2
+        case .reinforced: return 5
+        case .barrier: return 1
+        }
+    }
+}
+
+/// Neon trim colors (build 4). Levels introduce them one by one; cyan is the original.
+enum NeonColor: String, CaseIterable {
+    case cyan, magenta, lime, amber, red, violet
+
+    /// sRGB components 0...1.
+    var rgb: SIMD3<Float> {
+        switch self {
+        case .cyan: return [0.2, 0.92, 1.0]
+        case .magenta: return [1.0, 0.25, 0.75]
+        case .lime: return [0.49, 1.0, 0.3]
+        case .amber: return [1.0, 0.7, 0.18]
+        case .red: return [1.0, 0.23, 0.31]
+        case .violet: return [0.65, 0.4, 1.0]
         }
     }
 }
@@ -44,6 +69,8 @@ struct BlockSpec: Equatable {
     var isTarget: Bool = true
     /// Rotation around the vertical axis, in radians.
     var yaw: Float = 0
+    /// Neon trim color; nil = plain metal (energy cores default to cyan).
+    var neon: NeonColor? = nil
 
     /// Volume in m³ (wedges are half a box).
     var volume: Float {

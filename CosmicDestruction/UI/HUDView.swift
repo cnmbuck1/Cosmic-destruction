@@ -79,18 +79,33 @@ private struct ShotsIndicator: View {
     let total: Int
 
     var body: some View {
+        // Up to 6 shots as pips; longer levels show a compact count so the
+        // level name keeps its room.
         HStack(spacing: 6) {
-            ForEach(0..<total, id: \.self) { i in
-                let available = i < remaining
+            if total > 6 {
                 Circle()
-                    .fill(available
-                          ? AnyShapeStyle(RadialGradient(colors: [.white, Theme.cyan], center: .center, startRadius: 0, endRadius: 9))
-                          : AnyShapeStyle(Color.white.opacity(0.12)))
+                    .fill(RadialGradient(colors: [.white, Theme.cyan], center: .center, startRadius: 0, endRadius: 9))
                     .frame(width: 12, height: 12)
-                    .overlay(Circle().stroke(Theme.cyan.opacity(available ? 0.9 : 0.3), lineWidth: 1))
-                    .shadow(color: available ? Theme.cyan.opacity(0.8) : .clear, radius: 5)
-                    .scaleEffect(available ? 1 : 0.8)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: available)
+                    .shadow(color: Theme.cyan.opacity(0.8), radius: 5)
+                Text("\(remaining)/\(total)")
+                    .font(Theme.mono(13))
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText(value: Double(remaining)))
+                    .animation(.easeOut(duration: 0.25), value: remaining)
+                    .accessibilityLabel("\(remaining) of \(total) shots left")
+            } else {
+                ForEach(0..<total, id: \.self) { i in
+                    let available = i < remaining
+                    Circle()
+                        .fill(available
+                              ? AnyShapeStyle(RadialGradient(colors: [.white, Theme.cyan], center: .center, startRadius: 0, endRadius: 9))
+                              : AnyShapeStyle(Color.white.opacity(0.12)))
+                        .frame(width: 12, height: 12)
+                        .overlay(Circle().stroke(Theme.cyan.opacity(available ? 0.9 : 0.3), lineWidth: 1))
+                        .shadow(color: available ? Theme.cyan.opacity(0.8) : .clear, radius: 5)
+                        .scaleEffect(available ? 1 : 0.8)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: available)
+                }
             }
         }
         .padding(.horizontal, 12)

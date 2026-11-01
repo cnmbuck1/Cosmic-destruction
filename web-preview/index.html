@@ -48,6 +48,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
   background: var(--panel); border: 1px solid rgba(51, 235, 255, 0.4);
 }
 .shot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(51, 235, 255, 0.35); background: rgba(255,255,255,0.1); transform: scale(0.8); transition: all .3s; }
+.shotn { font: 600 13px var(--mono); color: #fff; letter-spacing: .06em; }
 .shot.on { background: radial-gradient(circle, #fff, var(--cyan)); border-color: var(--cyan); box-shadow: 0 0 8px var(--cyan); transform: none; }
 .bar { background: var(--panel); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; }
 .bar-head { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 0.2em; color: var(--dim); }
@@ -104,7 +105,7 @@ h2 { font-size: 24px; letter-spacing: 0.12em; }
 .big { font-size: 46px; font-weight: 700; color: var(--cyan); text-shadow: 0 0 14px var(--cyan); line-height: 1; }
 .small-label { font-size: 10px; letter-spacing: .16em; color: var(--dim); }
 .note { font-size: 13px; color: rgba(233,246,255,.85); line-height: 1.45; max-width: 30ch; }
-.levels { display: grid; gap: 12px; width: 100%; }
+.levels { display: grid; gap: 10px; width: 100%; max-height: min(62vh, 640px); overflow-y: auto; padding-right: 2px; }
 .card {
   display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 16px; border-radius: 16px;
   background: var(--panel); border: 1px solid rgba(51,235,255,.5); color: var(--ink);
@@ -218,7 +219,68 @@ const TUNE = {
 // Kinds: standard, beam, column, heavy, wedge, energy. Wedge size = base width, height, depth.
 const LEVELS = (() => {
   const g = 0.004;
-  const B = () => { const blocks = []; return { blocks, put(k, s, x, z, base, t = true, yaw = 0) { blocks.push({ c: [x, base + g + s[1] / 2, z], s, k, t, yaw }); return base + g + s[1]; } }; };
+  // put(kind, size, x, z, base, target, yaw, neon) places a piece whose bottom sits at `base` and returns its top.
+  // `neon` names a trim color from NEON (null = plain); `b.neon` is the level's default for trimmed pieces.
+  // With `armor` on, standard target pieces are built as reinforced blocks (trimmed in the level's neon).
+  const B = (neon = null, armor = false) => { const blocks = []; return { blocks, neon, put(k, s, x, z, base, t = true, yaw = 0, n = null) { if (armor && t && k === "standard") { k = "reinforced"; n = n || neon || "cyan"; } blocks.push({ c: [x, base + g + s[1] / 2, z], s, k, t, yaw, n }); return base + g + s[1]; } }; };
+
+  // ---- Structure kit (build 4). Each helper builds one free-standing piece, so the number of
+  // pieces and how sturdy each one is set a level's difficulty. `n` = trim color for caps,
+  // points and cores; columns and walls stay plain metal.
+  // Pylon: twin stacked columns on a heavy plinth, capital, top block and point.
+  const pylon = (b, x, z, o = {}) => {
+    const n = o.n || b.neon, lv = o.levels || 2, h = o.h || 0.95;
+    const plinth = b.put("heavy", [1.2, 0.4, 1.2], x, z, 0, false); let top = 0;
+    for (const dz of [-0.3, 0.3]) { let base = plinth; for (let i = 0; i < lv; i++) base = b.put("column", [0.4, h, 0.4], x, z + dz, base); top = base; }
+    const cap = b.put("standard", [1.0, 0.3, 1.0], x, z, top, true, 0, n);
+    const head = b.put(o.core ? "energy" : "standard", [0.6, 0.6, 0.6], x, z, cap, true, 0, n);
+    b.put("wedge", [0.7, 0.45, 0.7], x, z, head, true, 0, n);
+  };
+  // Gate: two column stacks carry a lintel with an energy core and a crown.
+  const gate = (b, x, z, o = {}) => {
+    const n = o.n || b.neon, w = o.w || 1.6, lv = o.levels || 2;
+    const base = b.put("heavy", [w - 0.1, 0.35, 1.0], x, z, 0, false); let top = 0;
+    for (const dx of [-(w / 2 - 0.3), w / 2 - 0.3]) { let t = base; for (let i = 0; i < lv; i++) t = b.put("column", [0.4, 0.9, 0.4], x + dx, z, t); top = t; }
+    const lintel = b.put("beam", [w, 0.4, 0.8], x, z, top, true, 0, n);
+    const core = b.put("energy", [0.65, 0.65, 0.65], x, z, lintel, true, 0, n);
+    b.put("wedge", [0.8, 0.5, 0.7], x, z, core, true, 0, n);
+  };
+  // Ziggurat: stepped stack of cubes, sturdy, so one hit only strips part of it.
+  const ziggurat = (b, x, z, o = {}) => {
+    const n = o.n || b.neon, layers = o.layers || 3, c = o.cube || 0.5, step = c + 0.006;
+    let base = b.put("heavy", [layers * step + 0.1, 0.3, layers * step + 0.1], x, z, 0, false);
+    for (let L = layers; L >= 1; L--) {
+      let top = base;
+      for (let i = 0; i < L; i++) for (let j = 0; j < L; j++)
+        top = b.put(L === 1 ? "energy" : "standard", [c, c, c], x + (i - (L - 1) / 2) * step, z + (j - (L - 1) / 2) * step, base, true, 0, L === 1 || o.trimAll ? n : null);
+      base = top;
+    }
+    b.put("wedge", [c, c * 0.8, c], x, z, base, true, 0, n);
+  };
+  // Spire: tapering stack of blocks on a plinth, tall and easy to topple.
+  const spire = (b, x, z, o = {}) => {
+    const n = o.n || b.neon, sizes = o.sizes || [0.7, 0.6, 0.5, 0.4];
+    let base = b.put("heavy", [0.9, 0.3, 0.9], x, z, 0, false);
+    sizes.forEach((sz, i) => { base = b.put(i === sizes.length - 1 && o.core ? "energy" : "standard", [sz, sz * 1.1, sz], x, z, base, true, 0, i % 2 ? n : null); });
+    b.put("wedge", [0.45, 0.6, 0.45], x, z, base, true, 0, n);
+  };
+  // Shield wall: a fixed energy barrier (not a target) that blocks flat shots.
+  const wall = (b, x, z, len, o = {}) => {
+    const rows = o.rows || 1, c = 0.6, cnt = Math.round(len / (c + 0.006));
+    // One fixed slab per wall: shots must arc over it; it never falls, so it can't knock pieces over.
+    b.put("barrier", [cnt * (c + 0.006), rows * c, 0.5], x, z, 0, false, 0, o.n || "red");
+  };
+  // Bridge: two column pairs joined by a deck that carries blocks; dropping either end drops the deck.
+  const bridge = (b, x, z, o = {}) => {
+    const n = o.n || b.neon, span = o.span || 2.4; let top = 0;
+    for (const dx of [-span / 2, span / 2]) {
+      const p = b.put("heavy", [0.9, 0.3, 0.9], x + dx, z, 0, false); let t = p;
+      for (let i = 0; i < (o.levels || 2); i++) t = b.put("column", [0.45, 0.9, 0.45], x + dx, z, t);
+      top = t;
+    }
+    const deck = b.put("beam", [span + 0.6, 0.35, 0.8], x, z, top, true, 0, n);
+    for (const dx of [-span / 3, 0, span / 3]) b.put(dx === 0 ? "energy" : "standard", [0.5, 0.5, 0.5], x + dx, z, deck, true, 0, dx === 0 ? n : null);
+  };
 
   // Lunar Gateway (build 3): three separate pieces (left pylon, central gate, right pylon),
   // so one direct hit wrecks one piece and maybe part of a neighbour, never the whole site.
@@ -235,40 +297,64 @@ const LEVELS = (() => {
   const gBeam = l1.put("beam", [1.6, 0.4, 0.8], 0, 0, gTop);
   const coreTop = l1.put("energy", [0.65, 0.65, 0.65], 0, 0, gBeam);
   l1.put("wedge", [0.8, 0.5, 0.7], 0, 0, coreTop);
-  const l2 = B(); const ax = -2;
-  const aBase = l2.put("heavy", [1.4, 0.5, 1.4], ax, 0, 0, false); let aTop = 0;
-  for (const dx of [-0.45, 0.45]) for (const z of [-0.45, 0.45]) aTop = l2.put("column", [0.3, 1.2, 0.3], ax + dx, z, aBase);
-  const aCap1 = l2.put("standard", [1.3, 0.3, 1.3], ax, 0, aTop); let aUp = 0;
-  for (const x of [-2.45, -1.95]) for (const z of [-0.4, 0.4]) aUp = l2.put("column", [0.3, 1.1, 0.3], x, z, aCap1);
-  const aCap2 = l2.put("standard", [0.9, 0.25, 1.1], -2.2, 0, aUp);
-  const spire = l2.put("standard", [0.6, 0.6, 0.6], -2.2, 0, aCap2);
-  l2.put("wedge", [0.6, 0.6, 0.6], -2.2, 0, spire);
-  const bx = 2, bBase = l2.put("heavy", [1.4, 0.5, 1.4], bx, 0, 0, false); let layer = bBase;
-  for (let i = 0; i < 2; i++) { let top = 0; for (const dx of [-0.302, 0.302]) for (const z of [-0.302, 0.302]) top = l2.put("heavy", [0.6, 0.6, 0.6], bx + dx, z, layer); layer = top; }
-  const bCap = l2.put("standard", [1.3, 0.3, 1.3], bx, 0, layer);
-  l2.put("wedge", [0.6, 0.5, 0.6], 2.2, 0, bCap);
-  for (const z of [-0.45, 0.45]) l2.put("standard", [0.35, 0.35, 0.35], 2.45, z, bCap);
-  const bridge = Math.max(aCap1, bCap); let deck2 = 0;
-  for (const z of [-0.27, 0.27]) deck2 = l2.put("beam", [3.4, 0.35, 0.5], 0, z, bridge);
-  l2.put("energy", [0.6, 0.6, 0.6], 0, 0, deck2);
-  for (const x of [-0.9, 0.9]) l2.put("standard", [0.5, 0.5, 0.5], x, 0, deck2);
+  // Levels 2+ (build 4): difficulty rises through more separate pieces (each hit wrecks about
+  // one), sturdier pieces, pieces hidden behind others or behind shield walls, and higher targets.
+  const L = [];
+  const addLevel = (id, name, diff, opts, build) => { const b = B(opts.neon || null, !!opts.armor); build(b); L.push({ id, name, diff, blocks: b.blocks, gravity: -9.5, origin: [0, 0, -3.4], pull: 0, el: 6, ...opts }); };
 
-  const l3 = B();
-  for (const x of [-1.32, 1.32]) for (const z of [-0.82, 0.82]) l3.put("heavy", [2.6, 0.4, 1.6], x, z, 0, false);
-  const floor = g + 0.4; let colTop = 0;
-  for (const x of [-1.6, 1.6]) for (const z of [-0.6, 0.6]) { const lo = l3.put("column", [0.45, 1.0, 0.45], x, z, floor); colTop = l3.put("column", [0.45, 1.0, 0.45], x, z, lo); }
-  let deck3 = 0;
-  for (const z of [-0.61, 0.61]) deck3 = l3.put("beam", [3.8, 0.3, 1.2], 0, z, colTop);
-  const core3 = l3.put("energy", [0.7, 0.7, 0.7], 0, 0, deck3);
-  for (const x of [-0.75, 0.75]) for (const z of [-0.55, 0.55]) { const gt = l3.put("standard", [0.5, 0.5, 0.5], x, z, deck3); l3.put("wedge", [0.5, 0.4, 0.5], x, z, gt, true, Math.PI / 2); }
-  const crown = l3.put("standard", [0.9, 0.2, 0.9], 0, 0, core3);
-  l3.put("wedge", [0.8, 0.5, 0.8], 0, 0, crown);
-  for (const x of [-2.3, 2.3]) for (const z of [-1.25, 1.25]) { const lo = l3.put("standard", [0.55, 0.55, 0.55], x, z, floor); const up = l3.put("standard", [0.55, 0.55, 0.55], x, z, lo); l3.put("wedge", [0.55, 0.45, 0.55], x, z, up); }
+  addLevel(2, "Twin Spires", "Easy", { tag: "Two spires flank a gate.", shots: 5, threshold: 0.65, stars: [3, 4, 5] }, (b) => {
+    spire(b, -2.2, 0); spire(b, 2.2, 0); gate(b, 0, -0.2);
+  });
+  addLevel(3, "Orbital Citadel", "Easy", { tag: "Pylons guard a stepped core.", shots: 6, threshold: 0.8, stars: [3, 4, 6], pull: 0.3 }, (b) => {
+    pylon(b, -2.4, 0.3); pylon(b, 2.4, 0.3); ziggurat(b, 0, -0.6, { layers: 3 });
+  });
+  addLevel(4, "Neon Pylons", "Moderate", { tag: "Magenta pylons, two rows deep.", neon: "magenta", shots: 6, threshold: 0.7, stars: [3, 4, 6], pull: 0.3 }, (b) => {
+    pylon(b, -1.8, 0.9); pylon(b, 1.8, 0.9); pylon(b, -0.9, -0.9, { core: true }); pylon(b, 0.9, -0.9, { core: true });
+  });
+  addLevel(5, "Relay Array", "Moderate", { tag: "A bridge between four spires.", neon: "magenta", shots: 7, threshold: 0.8, stars: [4, 5, 7], pull: 0.4 }, (b) => {
+    spire(b, -2.7, 1.0); spire(b, 2.7, 1.0); bridge(b, 0, 0.6, { span: 2.0 });
+    spire(b, -1.0, -1.2, { core: true }); spire(b, 1.0, -1.2, { core: true });
+  });
+  addLevel(6, "Jade Steps", "Moderate", { tag: "Armored steps. Hit them square.", neon: "lime", armor: true, shots: 7, threshold: 0.85, stars: [4, 5, 7], pull: 0.5 , origin: [0, 0, -3.0]}, (b) => {
+    for (const x of [-2.2, 0, 2.2]) ziggurat(b, x, -0.7, { layers: 2 });
+    spire(b, -1.1, 1.1, { n: "magenta" }); spire(b, 1.1, 1.1, { n: "magenta" });
+  });
+  addLevel(7, "Arc Causeway", "Hard", { tag: "Two causeways shield the spires.", neon: "lime", armor: true, shots: 7, threshold: 0.85, stars: [4, 5, 7], pull: 0.5 , origin: [0, 0, -3.0]}, (b) => {
+    bridge(b, -1.5, 1.0, { span: 1.6 }); bridge(b, 1.5, 1.0, { span: 1.6, n: "magenta" });
+    for (const x of [-1.8, 0, 1.8]) spire(b, x, -1.1, { core: x === 0, n: x === 0 ? "magenta" : null });
+  });
+  addLevel(8, "Sentinel Wall", "Hard", { tag: "Arc your shots over the wall.", neon: "amber", armor: true, shots: 8, threshold: 0.85, stars: [5, 6, 8], pull: 0.5, el: 9 }, (b) => {
+    wall(b, 0, 2.1, 4.8);
+    for (const x of [-2.1, 0, 2.1]) gate(b, x, 0.2, { w: 1.2 });
+    spire(b, -1.0, -1.3); spire(b, 1.0, -1.3);
+  });
+  addLevel(9, "Cryo Spires", "Hard", { tag: "Seven spires, low gravity.", neon: "amber", armor: true, shots: 8, threshold: 0.8, stars: [5, 6, 8], pull: 0.6, gravity: -8.5 }, (b) => {
+    for (const x of [-2.7, -0.9, 0.9, 2.7]) spire(b, x, 1.1, { sizes: [0.6, 0.55, 0.5, 0.45, 0.4], n: "lime" });
+    for (const x of [-1.8, 0, 1.8]) spire(b, x, -0.6, { sizes: [0.6, 0.55, 0.5, 0.45, 0.4], core: true });
+  });
+  addLevel(10, "Reactor Ring", "Expert", { tag: "Spires ring a reactor core.", neon: "red", armor: true, shots: 8, threshold: 0.85, stars: [5, 6, 8], pull: 0.7, origin: [0, 0, -3.0] }, (b) => {
+    ziggurat(b, 0, 0.3, { layers: 2, n: "amber" });
+    [[-2.4, 1.0], [2.4, 1.0], [-2.0, -0.9], [2.0, -0.9], [0, -1.5]].forEach(([x, z], i) => spire(b, x, z, { core: i === 4, n: i % 2 ? "amber" : "red" }));
+  });
+  addLevel(11, "Twin Bastions", "Expert", { tag: "Walls guard two rows of towers.", neon: "red", armor: true, shots: 10, threshold: 0.9, stars: [6, 8, 10], pull: 0.7, el: 10, origin: [0, 0, -3.0] }, (b) => {
+    wall(b, -1.8, 1.9, 1.8); wall(b, 1.8, 1.9, 1.8);
+    for (const [i, x] of [-2.7, -0.9, 0.9, 2.7].entries()) spire(b, x, 0.6, { n: i % 3 ? "red" : "amber" });
+    pylon(b, -1.8, -1.0, { levels: 1, n: "amber" }); spire(b, 0, -1.2, { core: true, n: "magenta" }); pylon(b, 1.8, -1.0, { levels: 1, n: "amber" });
+  });
+  addLevel(12, "Prism Keep", "Expert", { tag: "Clear the keep almost entirely.", neon: "violet", armor: true, shots: 10, threshold: 0.85, stars: [6, 8, 10], pull: 0.8, el: 10, origin: [0, 0, -3.0] }, (b) => {
+    wall(b, 0, 1.9, 4.2);
+    for (const [i, x] of [-2.7, -0.9, 0.9, 2.7].entries()) spire(b, x, 0.6, { n: i % 3 ? "violet" : "lime" });
+    for (const x of [-1.8, 0, 1.8]) spire(b, x, -1.0, { core: true, sizes: [0.7, 0.6, 0.55, 0.5, 0.45] });
+  });
+  addLevel(13, "Crown of the Void", "Master", { tag: "Every color. Leave nothing standing.", neon: "violet", armor: true, shots: 11, threshold: 0.95, stars: [7, 9, 11], pull: 0.9, el: 11, gravity: -9, origin: [0, 0, -3.0] }, (b) => {
+    wall(b, -1.9, 1.95, 1.8); wall(b, 1.9, 1.95, 1.8); wall(b, 0, 1.95, 1.2);
+    for (const [i, x] of [-2.7, -0.9, 0.9, 2.7].entries()) spire(b, x, 0.7, { sizes: [0.65, 0.6, 0.55, 0.5, 0.45], n: ["magenta", "lime", "amber", "red"][i] });
+    pylon(b, -1.8, -0.9, { levels: 2, core: true, n: "cyan" }); ziggurat(b, 0, -1.0, { layers: 2, n: "violet" }); pylon(b, 1.8, -0.9, { levels: 2, core: true, n: "cyan" });
+  });
 
   return [
-    { id: 1, name: "Lunar Gateway", diff: "Easy", gravity: -9.5, shots: 5, threshold: 0.6, stars: [2, 3, 5], origin: [0, 0, -3.4], pull: 0, el: 5, blocks: l1.blocks },
-    { id: 2, name: "Twin Spires", diff: "Moderate", gravity: -10, shots: 5, threshold: 0.7, stars: [2, 3, 5], origin: [0, 0, -3.4], pull: 0.3, el: 8, blocks: l2.blocks },
-    { id: 3, name: "Orbital Citadel", diff: "Challenging", gravity: -9, shots: 5, threshold: 0.7, stars: [2, 3, 5], origin: [0, 0, -3.1], pull: 0.9, el: 9, blocks: l3.blocks },
+    { id: 1, name: "Lunar Gateway", tag: "Topple the gate and both pylons.", diff: "Easy", gravity: -9.5, shots: 5, threshold: 0.6, stars: [2, 3, 5], origin: [0, 0, -3.4], pull: 0, el: 5, blocks: l1.blocks },
+    ...L,
   ];
 })();
 const starsFor = (shots) => (shots <= level.stars[0] ? 3 : shots <= level.stars[1] ? 2 : 1);
@@ -397,11 +483,16 @@ function panelTexture(base, edge, seam, seed) {
   g.strokeStyle = seam; g.lineWidth = 3; g.strokeRect(34, 34, 188, 188);
   return c;
 }
+// strong = energy core (frame + ring + dot); "trim" = neon edge frame on a structural piece;
+// "band" = shield-wall stripe; false = faint frame (v2 look, unused for targets now).
 function emissionTexture(color, strong) {
   const [c, g] = canvas(256, 256);
   g.fillStyle = "#000"; g.fillRect(0, 0, 256, 256);
-  g.strokeStyle = color; g.globalAlpha = strong ? 1 : 0.55; g.lineWidth = strong ? 6 : 3; g.strokeRect(14, 14, 228, 228);
-  if (strong) { g.lineWidth = 5; g.beginPath(); g.arc(128, 128, 40, 0, 7); g.stroke(); g.fillStyle = color; g.beginPath(); g.arc(128, 128, 12, 0, 7); g.fill(); }
+  g.strokeStyle = color; g.fillStyle = color;
+  if (strong === "band") { g.fillRect(0, 40, 256, 34); g.globalAlpha = 0.6; g.fillRect(0, 0, 256, 6); g.fillRect(0, 250, 256, 6); return c; }
+  if (strong === "trim") { g.lineWidth = 12; g.strokeRect(8, 8, 240, 240); g.globalAlpha = 0.5; g.lineWidth = 3; g.strokeRect(40, 40, 176, 176); return c; }
+  g.globalAlpha = strong ? 1 : 0.55; g.lineWidth = strong ? 6 : 3; g.strokeRect(14, 14, 228, 228);
+  if (strong) { g.lineWidth = 5; g.beginPath(); g.arc(128, 128, 40, 0, 7); g.stroke(); g.beginPath(); g.arc(128, 128, 12, 0, 7); g.fill(); }
   return c;
 }
 function glowTexture() {
@@ -507,8 +598,10 @@ M.rimCyan.side = THREE.DoubleSide;
 M.circle = new THREE.MeshBasicMaterial({ map: tex(energyCircleTexture()), color: 0x59d9ff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
 M.rock.envMapIntensity = 0.25;
 const blockMat = {};
-function blockMaterial(kind, target) {
-  const k = kind + target;
+// Neon trim colors (build 4). Levels introduce them one by one; cyan is the original.
+const NEON = { cyan: "#33ebff", magenta: "#ff40bf", lime: "#7dff4d", amber: "#ffb22e", red: "#ff3b4e", violet: "#a666ff" };
+function blockMaterial(kind, target, neon) {
+  const k = kind + target + (neon || "");
   if (blockMat[k]) return blockMat[k];
   // Structural pieces have no glow; only energy cores emit (build sheet 2.0 §3.3).
   const P = {
@@ -520,8 +613,14 @@ function blockMaterial(kind, target) {
   };
   let m;
   if (!target) m = std({ map: tex(panelTexture("#1a1a1f", "#333", "#0d0d0d", 4)), metalness: 0.4, roughness: 0.75 });
-  else if (kind === "energy") m = std({ map: tex(panelTexture("#1a2438", "#4d99bf", "#141a29", 3)), emissiveMap: tex(emissionTexture("#33ebff", true)), emissive: 0xffffff, emissiveIntensity: 1.8, metalness: 0.5, roughness: 0.3 });
-  else { const [b, e, sm, seed, met, rough] = P[kind]; m = std({ map: tex(panelTexture(b, e, sm, seed)), metalness: met, roughness: rough }); }
+  else if (kind === "energy") m = std({ map: tex(panelTexture("#1a2438", "#4d99bf", "#141a29", 3)), emissiveMap: tex(emissionTexture(NEON[neon] || NEON.cyan, true)), emissive: 0xffffff, emissiveIntensity: 1.8, metalness: 0.5, roughness: 0.3 });
+  else if (kind === "barrier") m = std({ map: tex(panelTexture("#14151c", "#3a3d4d", "#0b0b10", 9)), emissiveMap: tex(emissionTexture(NEON[neon] || NEON.red, "band")), emissive: 0xffffff, emissiveIntensity: 2.2, metalness: 0.7, roughness: 0.45 });
+  else if (kind === "reinforced") m = std({ map: tex(panelTexture("#262833", "#565c70", "#14151c", 8)), emissiveMap: tex(emissionTexture(NEON[neon] || NEON.cyan, "trim")), emissive: 0xffffff, emissiveIntensity: 2.0, metalness: 0.85, roughness: 0.3 });
+  else {
+    const [b, e, sm, seed, met, rough] = P[kind];
+    // A neon trim adds a thin glowing edge line; untrimmed pieces stay plain metal.
+    m = std({ map: tex(panelTexture(b, e, sm, seed)), metalness: met, roughness: rough, ...(neon ? { emissiveMap: tex(emissionTexture(NEON[neon], "trim")), emissive: 0xffffff, emissiveIntensity: 1.8 } : {}) });
+  }
   return (blockMat[k] = m);
 }
 
@@ -682,7 +781,7 @@ const energyCircle = (() => {
   // Physics: flat static body, top at y = 0. A central box plus radial boxes
   // that follow the irregular outline (cannon.js has no cheap convex hull).
   const body = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC });
-  const radiusAt = (ang) => { let best = 0, bd = 9; OUTLINE.forEach(([x, z]) => { let d = Math.abs(Math.atan2(z, x) - ang); d = Math.min(d, Math.PI * 2 - d); if (d < bd) { bd = d; best = Math.hypot(x, z); } }); return best; };
+  const radiusAt = (ang) => { let best = 0, bd = 9; OUTLINE.forEach(([x, z]) => { let d = (((Math.atan2(z, x) - ang) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); d = Math.min(d, Math.PI * 2 - d); if (d < bd) { bd = d; best = Math.hypot(x, z); } }); return best; };
   body.addShape(new CANNON.Box(new CANNON.Vec3(TUNE.platW * 0.3, T / 2, TUNE.platD * 0.3)), new CANNON.Vec3(0, -T / 2, 0));
   const SEG = 24;
   for (let i = 0; i < SEG; i++) {
@@ -954,7 +1053,8 @@ function blockShape(spec) {
 }
 const blockVolume = (spec) => spec.s[0] * spec.s[1] * spec.s[2] * (spec.k === "wedge" ? 0.5 : 1);
 // Load-bearing columns are denser so stacks never sit heavy-on-light (mirrors BlockKind.densityMultiplier).
-const DENSITY = { standard: 1, beam: 0.75, column: 2.5, heavy: 1, wedge: 0.8, energy: 1.2 };
+// reinforced (build 4): dense armored block with neon trim; resists impacts and toppling.
+const DENSITY = { standard: 1, beam: 0.75, column: 2.5, heavy: 1, wedge: 0.8, energy: 1.2, reinforced: 5, barrier: 1 };
 const blockMass = (spec) => Math.max(0.12, (spec.k === "heavy" ? TUNE.heavyMass : TUNE.stdMass) * DENSITY[spec.k] * blockVolume(spec) / 0.512);
 
 function clearLevel() {
@@ -971,9 +1071,10 @@ function loadLevel(i) {
   const [ox, oy, oz] = level.origin;
   energyCircle.position.set(ox, 0.012, oz);
   for (const spec of level.blocks) {
-    const mesh = new THREE.Mesh(blockGeometry(spec), blockMaterial(spec.k, spec.t));
+    const mesh = new THREE.Mesh(blockGeometry(spec), blockMaterial(spec.k, spec.t, spec.n));
     mesh.castShadow = mesh.receiveShadow = true;
-    const body = new CANNON.Body({ mass: blockMass(spec), shape: blockShape(spec) });
+    // Barriers (shield walls) are fixed in place: they block shots but never fall or count.
+    const body = spec.k === "barrier" ? new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: blockShape(spec) }) : new CANNON.Body({ mass: blockMass(spec), shape: blockShape(spec) });
     body.position.set(ox + spec.c[0], oy + spec.c[1], oz + spec.c[2]);
     if (spec.yaw) body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spec.yaw);
     body.linearDamping = body.angularDamping = TUNE.stab;
@@ -1067,7 +1168,7 @@ function highEnergyImpact(center, inDir, energy, struck) {
   const P = PRESETS[presetKey];
   const fwd = new THREE.Vector3(inDir.x, Math.max(inDir.y, -0.2), inDir.z).normalize();
   for (const b of blocks) {
-    if (b.gone || b.removed) continue;
+    if (b.gone || b.removed || b.body.mass === 0) continue;
     const p = b.body.position, off = new THREE.Vector3(p.x - center.x, p.y - center.y, p.z - center.z);
     const dist = b.body === struck ? 0 : off.length();
     if (dist >= P.radius) continue;
@@ -1075,7 +1176,8 @@ function highEnergyImpact(center, inDir, energy, struck) {
     const radial = new THREE.Vector3(off.x, 0, off.z); if (radial.length() < 0.001) radial.set(fwd.x, 0, fwd.z); radial.normalize();
     const dir = fwd.clone().multiplyScalar(P.fwd).addScaledVector(radial, P.radial);
     dir.y += P.up; dir.normalize();
-    const resist = clamp(Math.pow(0.55 / b.body.mass, 0.2), 0.6, 1.15);
+    // Light blocks (<= 0.55 kg) scatter a little more; heavier ones resist increasingly (armored blocks hold).
+    const m = b.body.mass, resist = m <= 0.55 ? clamp(Math.pow(0.55 / m, 0.2), 1, 1.15) : clamp(Math.pow(0.55 / m, 0.6), 0.3, 1);
     const dv = Math.min(P.dv * energy * f * resist, P.cap);
     if (dv < 0.2) continue;
     b.body.wakeUp();
@@ -1200,7 +1302,10 @@ function renderHUD() {
   if (!level) return;
   $("lvlNum").textContent = `LEVEL ${levelIndex + 1}`;
   $("lvlName").textContent = level.name.toUpperCase();
-  $("shots").innerHTML = Array.from({ length: level.shots }, (_, i) => `<span class="shot${i < level.shots - shotsUsed ? " on" : ""}"></span>`).join("");
+  // Up to 6 shots as pips; longer levels show a compact count so the level name keeps its room.
+  $("shots").innerHTML = level.shots <= 6
+    ? Array.from({ length: level.shots }, (_, i) => `<span class="shot${i < level.shots - shotsUsed ? " on" : ""}"></span>`).join("")
+    : `<span class="shot on"></span><span class="shotn">${level.shots - shotsUsed}/${level.shots}</span>`;
   const p = progressFrac(), pct = Math.round(p * 100), el = $("pct");
   if (el.dataset.v !== String(pct)) {
     const rising = Number(el.dataset.v || 0) < pct;
@@ -1248,7 +1353,7 @@ function showVictory(stars) {
     <div class="stars">${[0, 1, 2].map((i) => STAR.replace('class="star"', `class="star${i < stars ? " earned" : ""}"`)).join("")}</div>
     <div class="meta">SHOTS USED: ${shotsUsed} · INTO THE VOID: ${removedCount()}</div>
     <div class="meta">SCORE ${scoreNow(true).toLocaleString("en-US")}</div>
-    <div class="btns">${hasNext ? '<button class="btn" id="next">NEXT LEVEL</button>' : '<div class="note">All prototype levels cleared!</div>'}
+    <div class="btns">${hasNext ? '<button class="btn" id="next">NEXT LEVEL</button>' : '<div class="note">All levels cleared!</div>'}
     <button class="btn ghost" id="replay">REPLAY</button><button class="link" id="levels">LEVELS</button></div></div>`);
   overlay.querySelectorAll(".star").forEach((s, i) => setTimeout(() => s.classList.add("show"), 220 * (i + 1)));
   on("next", () => loadLevel(levelIndex + 1));
@@ -1284,8 +1389,23 @@ document.addEventListener("visibilitychange", () => { if (document.hidden && lev
 
 // ---------- Loop ----------
 let lastT = performance.now(), acc = 0;
+let turbo = false; // test hook: simulation driven synchronously by __cd.run, rendering paused
+function stepSim(raw) {
+  fx.update(raw);
+  cannon.update(raw);
+  if (level) {
+    const ts = fx.timeScale(), dt = raw * ts;
+    simTime += dt;
+    acc += dt;
+    let steps = 0;
+    while (acc >= FIXED && steps < 8) { world.step(FIXED); acc -= FIXED; steps++; }
+    if (steps === 8) acc = 0;
+    processContacts(); updateBlocks(); updateOrbs(raw); updateGame();
+  }
+}
 function frame(now) {
   const raw = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  if (turbo) { requestAnimationFrame(frame); return; }
   if (!paused) {
     fx.update(raw);
     cannon.update(raw);
@@ -1307,8 +1427,16 @@ requestAnimationFrame(frame);
 
 // Test hook for automated checks (no effect on play).
 window.__cd = { preset: (k) => { presetKey = k; renderHUD(); },
+  // Runs the simulation synchronously at 60 Hz for up to `secs` (or until the shot resolves), without rendering.
+  levelCount: () => LEVELS.length,
+  island: () => { const b = world.bodies.find((x) => x.mass === 0 && x.shapes.length > 10); return { pos: [b.position.x, b.position.z], shapes: b.shapes.map((sh, i) => [b.shapeOffsets[i].x.toFixed(2), b.shapeOffsets[i].z.toFixed(2), sh.halfExtents.x.toFixed(2), sh.halfExtents.z.toFixed(2)].join(',')).join(' ') }; },
+  rayGrid: () => { const rows = []; for (let z = -6; z <= 4.01; z += 0.5) { let row = z.toFixed(1).padStart(5) + ' '; for (let x = -4; x <= 4.01; x += 0.5) { const r = new CANNON.RaycastResult(); world.raycastClosest(new CANNON.Vec3(x, 3, z), new CANNON.Vec3(x, -3, z), { collisionFilterMask: -1, skipBackfaces: true }, r); row += r.hasHit && r.body.mass === 0 ? '#' : '.'; } rows.push(row); } return rows.join('\n'); },
+  moved: () => blocks.filter((b) => b.displaced).map((b) => b.spec.k + '@' + b.spec.c.map((v) => v.toFixed(2)).join(',') + '->' + [b.body.position.x, b.body.position.y - level.origin[1], b.body.position.z - level.origin[2]].map((v) => v.toFixed(2)).join(',')),
+  release: () => { for (const b of blocks) { b.body.linearDamping = TUNE.linDamp; b.body.angularDamping = TUNE.angDamp; b.body.wakeUp(); } stabilized = false; },
+  levelInfo: () => ({ name: level.name, shots: level.shots, threshold: level.threshold, targets: targetCount() }),
+  run: (secs, untilAiming) => { turbo = true; for (let i = 0; i < secs * 60; i++) { stepSim(1 / 60); if (untilAiming && phase !== "resolving") break; } turbo = false; return phase; },
   // Aim at a world point: yaw toward it, then solve the ballistic elevation (low arc).
-  aimAt: (x, y, z) => {
+  aimAt: (x, y, z, high) => {
     // The muzzle swings with yaw, so refine the yaw from the moved muzzle a few times.
     let yaw = 0; for (let i = 0; i < 4; i++) { cannon.set(yaw, 0); const m0 = cannon.muzzle(); yaw = Math.atan2(x - m0.x, -(z - m0.z)) / DEG; }
     cannon.set(yaw, 0);
@@ -1316,7 +1444,7 @@ window.__cd = { preset: (k) => { presetKey = k; renderHUD(); },
     for (let e = RULES.minEl; e <= RULES.maxEl; e += 0.1) {
       cannon.set(yaw, e); const m = cannon.muzzle(), d = cannon.dir(), v = TUNE.launch, hd = Math.hypot(x - m.x, z - m.z), hv = Math.hypot(d.x, d.z) * v;
       const t = hd / hv, yy = m.y + d.y * v * t + 0.5 * level.gravity * t * t;
-      if (Math.abs(yy - y) < err) { err = Math.abs(yy - y); best = e; }
+      if (high ? Math.abs(yy - y) < 0.15 || (best === 0 && Math.abs(yy - y) < err) : Math.abs(yy - y) < err) { err = Math.abs(yy - y); best = e; }
     }
     cannon.set(yaw, best); updateTrajectory(1); return [+yaw.toFixed(1), +best.toFixed(1)];
   },

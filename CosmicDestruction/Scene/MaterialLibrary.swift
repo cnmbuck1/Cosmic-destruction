@@ -99,13 +99,30 @@ final class MaterialLibrary {
 
     private var blockMaterials: [String: SCNMaterial] = [:]
 
-    func blockMaterial(kind: BlockKind, isTarget: Bool) -> SCNMaterial {
-        let key = "\(kind.rawValue)-\(isTarget)"
+    func blockMaterial(kind: BlockKind, isTarget: Bool, neon: NeonColor? = nil) -> SCNMaterial {
+        let key = "\(kind.rawValue)-\(isTarget)-\(neon?.rawValue ?? "")"
         if let cached = blockMaterials[key] { return cached }
         let m: SCNMaterial
-        // Structural pieces read as dark machined metal and stone with no glow
-        // (build sheet 2.0 §3.3); only energy cores emit light.
+        // Structural pieces read as dark machined metal and stone. Energy cores
+        // emit; from build 4, trimmed pieces carry a thin neon edge line.
+        let trim = neon.map(\.uiColor)
         switch (kind, isTarget) {
+        case (.barrier, _):
+            m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
+                base: UIColor(red: 0.08, green: 0.08, blue: 0.11, alpha: 1),
+                edge: UIColor(red: 0.23, green: 0.24, blue: 0.3, alpha: 1),
+                seam: UIColor(red: 0.04, green: 0.04, blue: 0.06, alpha: 1), seed: 9),
+                metalness: 0.7, roughness: 0.45,
+                emission: ProceduralTextures.barrierBand(color: trim ?? NeonColor.red.uiColor),
+                emissionIntensity: 2.2)
+        case (.reinforced, true):
+            m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
+                base: UIColor(red: 0.15, green: 0.16, blue: 0.2, alpha: 1),
+                edge: UIColor(red: 0.34, green: 0.36, blue: 0.44, alpha: 1),
+                seam: UIColor(red: 0.08, green: 0.08, blue: 0.11, alpha: 1), seed: 8),
+                metalness: 0.85, roughness: 0.3,
+                emission: ProceduralTextures.blockTrim(color: trim ?? Palette.cyan),
+                emissionIntensity: 2.0)
         case (_, false):
             // Decorative foundation: muted, no glow, so targets stand out.
             m = Self.pbr(diffuse: ProceduralTextures.blockPanel(
@@ -148,7 +165,12 @@ final class MaterialLibrary {
                 edge: UIColor(red: 0.3, green: 0.6, blue: 0.75, alpha: 1),
                 seam: UIColor(red: 0.08, green: 0.1, blue: 0.16, alpha: 1), seed: 3),
                 metalness: 0.5, roughness: 0.3,
-                emission: ProceduralTextures.blockEmission(color: Palette.cyan, strong: true), emissionIntensity: 2.2)
+                emission: ProceduralTextures.blockEmission(color: trim ?? Palette.cyan, strong: true), emissionIntensity: 2.2)
+        }
+        // A neon trim on an ordinary target piece adds a thin glowing edge line.
+        if let trim, isTarget, kind != .energy, kind != .reinforced, kind != .barrier {
+            m.emission.contents = ProceduralTextures.blockTrim(color: trim)
+            m.emission.intensity = 1.8
         }
         blockMaterials[key] = m
         return m
@@ -204,4 +226,8 @@ final class MaterialLibrary {
         m.multiply.contents = Palette.cyan
         return m
     }()
+}
+
+extension NeonColor {
+    var uiColor: UIColor { UIColor(red: CGFloat(rgb.x), green: CGFloat(rgb.y), blue: CGFloat(rgb.z), alpha: 1) }
 }

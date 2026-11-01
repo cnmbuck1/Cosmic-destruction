@@ -1,5 +1,14 @@
 # Implementation notes
 
+## Build 4 (13 levels)
+
+- Levels are authored once, in `web-preview/index.html` (the `LEVELS` block and its structure kit: pylon, gate, ziggurat, spire, bridge, wall). `node tools/export-levels.js` regenerates `CosmicDestruction/Core/Levels.swift`; never edit that file by hand.
+- Difficulty comes from more separate pieces (one direct hit wrecks about one piece), armored `reinforced` blocks, fixed `barrier` shield walls that force arcing shots, and higher targets. Shots vary per level (5 to 11).
+- Impact resistance: blocks up to 0.55 kg use the Build 3 curve; heavier ones get clamp((0.55 / mass)^0.6, 0.3, 1).
+- Neon trims: cyan (original), magenta (L4), lime (L6), amber (L8), red (L10), violet (L12).
+- Balance check: a scripted player aims at a random standing block with ±3° error and lobs after a blocked shot; it uses a synchronous test hook (`__cd.run`) so 16 runs of all 13 levels take a few minutes. Average shots to win rise from 2.3 (L1) to 7.3 (L13); win rate drops to about 70% on L13.
+- Fixed in the web preview: the island's floor physics missed its back 1.2 m (an angle-wrap bug in `radiusAt`), so blocks pushed there sank through the visible ground.
+
 ## Build 3.0 (Level 1 gameplay redesign)
 
 Root causes found in v0.2.0 before changing anything:
