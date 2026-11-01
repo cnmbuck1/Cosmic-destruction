@@ -61,11 +61,11 @@ jobs:
           cat "$DATA/Documents/smoke-results.txt" | tee screenshots/level1-results.txt || echo "(no results file)"
           xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmic-destruction || true
           sleep 2
-          xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmic-destruction -SmokeTestLevel 13 -SmokeTestAutoFire
-          sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/5-level13-loaded.png
-          sleep 6;  xcrun simctl io "$UDID" screenshot screenshots/6-level13-after-shot.png
+          xcrun simctl launch "$UDID" com.cnmbuckstudios.cosmic-destruction -SmokeTestLevel 20 -SmokeTestAutoFire
+          sleep 4;  xcrun simctl io "$UDID" screenshot screenshots/5-level20-loaded.png
+          sleep 6;  xcrun simctl io "$UDID" screenshot screenshots/6-level20-after-shot.png
           if ! app_running; then
-            echo "App is not running: it crashed on level 13"; exit 1
+            echo "App is not running: it crashed on level 20"; exit 1
           fi
           xcrun simctl terminate "$UDID" com.cnmbuckstudios.cosmic-destruction || true
           sleep 2

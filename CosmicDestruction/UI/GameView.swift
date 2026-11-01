@@ -19,6 +19,12 @@ struct GameView: View {
 
             HUDView(session: session, showDebugButton: debugAvailable)
 
+            if let world = session.worldBanner {
+                WorldBanner(world: world)
+                    .allowsHitTesting(false)
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            }
+
             if session.showDebugPanel && debugAvailable {
                 DebugOverlayView(session: session)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -27,6 +33,7 @@ struct GameView: View {
             overlay
         }
         .animation(.easeInOut(duration: 0.25), value: session.overlay)
+        .animation(.easeInOut(duration: 0.4), value: session.worldBanner?.key)
         .animation(.easeInOut(duration: 0.2), value: session.isPaused)
         .animation(.easeInOut(duration: 0.2), value: session.showDebugPanel)
         #if DEBUG
@@ -132,6 +139,34 @@ struct GameView: View {
     private func leaveGame() {
         session.detach()
         onExit()
+    }
+}
+
+/// "WORLD 2 · MARS" title card shown when play arrives on a new planet.
+private struct WorldBanner: View {
+    let world: WorldTheme
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text("WORLD \(world.number)")
+                .font(Theme.label(12))
+                .tracking(5)
+                .foregroundStyle(Theme.cyan)
+            Text(world.name.uppercased())
+                .font(Theme.display(40))
+                .tracking(5)
+                .foregroundStyle(.white)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+                .neonGlow()
+            Text(world.tagline)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+                .shadow(color: .black, radius: 4)
+        }
+        .padding(.horizontal, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 230)
     }
 }
 
