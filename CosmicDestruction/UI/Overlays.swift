@@ -62,7 +62,7 @@ struct VictoryOverlay: View {
                     Button("NEXT LEVEL", action: onNext)
                         .buttonStyle(NeonButtonStyle())
                 } else {
-                    Text("All prototype levels cleared!")
+                    Text("All levels cleared!")
                         .font(Theme.label(13))
                         .foregroundStyle(Theme.cyan)
                 }
