@@ -80,11 +80,16 @@ final class EffectsManager {
         ringGeo.materials = [lib.shockwave]
         for _ in 0..<3 {
             let holder = SCNNode()
+            // holder (yaw + uniform growth) → stretch (ellipse along the shot) → ring.
+            let stretch = SCNNode()
+            stretch.name = "stretch"
+            stretch.simdScale = SIMD3<Float>(1.5, 1, 0.75)
             let ring = SCNNode(geometry: ringGeo)
             ring.eulerAngles.x = -.pi / 2
             ring.castsShadow = false
             ring.renderingOrder = 21
-            holder.addChildNode(ring)
+            stretch.addChildNode(ring)
+            holder.addChildNode(stretch)
             holder.opacity = 0
             groundRingPool.append(holder)
         }
@@ -118,15 +123,22 @@ final class EffectsManager {
     }
 
     /// Expanding cyan shockwave ring flat along the impact height (§10).
-    func groundShockwave(at point: SIMD3<Float>, radius: Float) {
+    /// Brief directional shockwave (build 3.0 §6): an ellipse stretched along
+    /// the orb's travel and pushed slightly ahead of the hit, so it reads as
+    /// energy carried through the structure rather than a round explosion.
+    func groundShockwave(at point: SIMD3<Float>, radius: Float, direction: SIMD3<Float>) {
         let node = groundRingPool[groundRingIndex % groundRingPool.count]
         groundRingIndex += 1
         if node.parent == nil { root.addChildNode(node) }
         node.removeAllActions()
-        node.simdPosition = SIMD3<Float>(point.x, max(point.y - 0.2, 0.05), point.z)
+        var flat = SIMD2<Float>(direction.x, direction.z)
+        flat = simd_length(flat) > 0.001 ? simd_normalize(flat) : SIMD2<Float>(0, -1)
+        let ahead = flat * radius * 0.25
+        node.simdPosition = SIMD3<Float>(point.x + ahead.x, max(point.y - 0.2, 0.05), point.z + ahead.y)
+        node.simdOrientation = simd_quatf(angle: atan2(-flat.y, flat.x), axis: SIMD3<Float>(0, 1, 0))
         node.simdScale = SIMD3<Float>(repeating: 0.3)
         node.opacity = 1
-        let grow = SCNAction.scale(to: CGFloat(radius * 2.6), duration: 0.55)
+        let grow = SCNAction.scale(to: CGFloat(radius * 2.4), duration: 0.5)
         grow.timingMode = .easeOut
         let fade = SCNAction.sequence([.wait(duration: 0.15), .fadeOut(duration: 0.4)])
         node.runAction(.group([grow, fade]))
@@ -184,6 +196,13 @@ final class EffectsManager {
         dustThisFrame += 1
         lastDustTime = time
         burst(dustTemplate, at: point, count: 6 + 12 * intensity.clamped(0, 1))
+    }
+
+    /// Strong white-cyan flash and light pulse for the first, major orb impact.
+    func strongFlash(at point: SIMD3<Float>, size: Float) {
+        flash(at: point, size: size, duration: 0.26)
+        sceneManager.impactLight.simdPosition = point + SIMD3<Float>(0, 0.4, 0)
+        impactLightLevel = max(impactLightLevel, 2400)
     }
 
     func muzzleFlash(at point: SIMD3<Float>) {

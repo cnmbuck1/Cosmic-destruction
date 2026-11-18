@@ -27,6 +27,8 @@ private struct OverlayPanel<Content: View>: View {
 struct VictoryOverlay: View {
     let stars: Int
     let shotsUsed: Int
+    var abyssCount = 0
+    var score = 0
     let hasNextLevel: Bool
     let onNext: () -> Void
     let onReplay: () -> Void
@@ -48,16 +50,19 @@ struct VictoryOverlay: View {
             StarRow(stars: stars, size: 40, revealed: revealed)
                 .padding(.vertical, 6)
 
-            Text("SHOTS USED: \(shotsUsed)")
+            Text("SHOTS USED: \(shotsUsed) · INTO THE VOID: \(abyssCount)")
                 .font(Theme.mono(14))
                 .foregroundStyle(Theme.textDim)
+            Text("SCORE \(score.formatted())")
+                .font(Theme.mono(16))
+                .foregroundStyle(.white)
 
             VStack(spacing: 12) {
                 if hasNextLevel {
                     Button("NEXT LEVEL", action: onNext)
                         .buttonStyle(NeonButtonStyle())
                 } else {
-                    Text("All prototype levels cleared!")
+                    Text("All levels cleared!")
                         .font(Theme.label(13))
                         .foregroundStyle(Theme.cyan)
                 }

@@ -1,5 +1,59 @@
 # Implementation notes
 
+## Build 5 (planets every 10 levels, FIRE button, 20 levels)
+
+- Worlds: levels 1–10 are on the Moon, 11–20 on Mars, and 21–80 will be Mercury, Venus, Jupiter, Saturn, Uranus and Neptune. A world is only the look: a painted equirectangular sky with its planet (Earth over the Moon, Phobos and Deimos over Mars, the Sun for Mercury, cloud decks for Venus, and the giants themselves), a ground tint, recolored glowing veins, and relit scenes. Physics stay per level. Data: `Core/WorldTheme.swift` and `WORLDS` in the web preview; sky painting: `Scene/SkyPainter.swift` and `spaceTexture(w)`.
+- Sky placement: the default camera looks down -z, which is u = 0.25 in the web sky image and u = 0.5 in SceneKit (`SkyPainter.viewCenterU`). In portrait the visible sky is a thin band about 5° above to 8° below the horizon, so planets sit near the horizon to the sides of the structure.
+- Arriving on a world shows a "WORLD n · NAME" title card. The level list is grouped by world, and worlds without levels show as coming soon.
+- FIRE button: lifting the finger only sets the aim; the FIRE button (bottom right) launches. Space or Enter also fires in the web preview.
+- Mars levels 14–20 add a log tower (beams laid in alternating directions under an energy core; on armored levels the logs are reinforced). Most Mars levels put shield walls in front, so lobbed shots matter.
+- Fixed in the web preview: cannon.js 0.6.2's sweep-and-prune broadphase sorted bodies by AABB but ended each sweep using bounding spheres, so it skipped contacts between long, thin pieces and some towers collapsed on load. The sweep now uses the AABB. Levels 1–13 balance the same after the fix. SceneKit is not affected.
+
+## Build 4 (13 levels)
+
+- Levels are authored once, in `web-preview/index.html` (the `LEVELS` block and its structure kit: pylon, gate, ziggurat, spire, bridge, wall). `node tools/export-levels.js` regenerates `CosmicDestruction/Core/Levels.swift`; never edit that file by hand.
+- Difficulty comes from more separate pieces (one direct hit wrecks about one piece), armored `reinforced` blocks, fixed `barrier` shield walls that force arcing shots, and higher targets. Shots vary per level (5 to 11).
+- Impact resistance: blocks up to 0.55 kg use the Build 3 curve; heavier ones get clamp((0.55 / mass)^0.6, 0.3, 1).
+- Neon trims: cyan (original), magenta (L4), lime (L6), amber (L8), red (L10), violet (L12).
+- Balance check: a scripted player aims at a random standing block with ±3° error and lobs after a blocked shot; it uses a synchronous test hook (`__cd.run`) so 16 runs of all 13 levels take a few minutes. Average shots to win rise from 2.3 (L1) to 7.3 (L13); win rate drops to about 70% on L13.
+- Fixed in the web preview: the island's floor physics missed its back 1.2 m (an angle-wrap bug in `radiusAt`), so blocks pushed there sank through the visible ground.
+
+## Build 3.0 (Level 1 gameplay redesign)
+
+Root causes found in v0.2.0 before changing anything:
+
+- The cannon sat 10.4 m from the structure on an 18 × 16 m platform, so Level 1 filled about 15% of the screen height.
+- The radial impulse used quadratic falloff over 2.4 m with a mass-scaled cap, so a block 1 m from the hit got only about 2.5 m/s.
+- Debris had 4+ m of flat ground to cross before it could reach an edge, so almost nothing fell into the void.
+- Progress counted only blocks that fell off the platform, so a wrecked structure could still read 10%.
+
+What changed (web preview and iOS are kept in step):
+
+| Area | Value |
+| --- | --- |
+| Island | 7.8 × 10 m, centered at z −0.6, 2.2 m thick, nearly convex (no bites), craters only in the rim band |
+| Cannon | z 3.4, drawn at 72% scale |
+| Camera | elevation 5.4, 4.2 m behind the cannon, looks at (origin.x, 1.2, origin.z + 0.6), horizontal FOV 38° |
+| Orb | 14 kg, radius 0.4, launch 30 m/s |
+| Blocks | standard 0.55 kg per 0.8 m cube, heavy 1.8, friction 0.42, restitution 0.12, damping 0.02 / 0.04, max speed 26 m/s |
+| Impact energy | clamp(incoming speed / launch speed, 0.3, 1.2), halved for the orb's second impact; max 2 impacts per orb, 0.25 s apart |
+| Displacement | a target counts once it moves > 0.7 m from its slot or tilts > 30° |
+| Score | 100 per displaced target, 150 per target in the void, 250 per unused shot at victory |
+
+Impact presets (`ImpactPreset`, debug switch in the HUD and the debug panel):
+
+| Preset | Δv (m/s) | Radius | Forward | Radial | Up | Spin | Cap | Falloff exp. |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| A Moderate | 6.5 | 2.0 | 0.7 | 0.35 | 0.25 | 3 | 9 | 1.4 |
+| B Powerful (default) | 10.5 | 2.0 | 0.7 | 0.3 | 0.35 | 5 | 14 | 1.2 |
+| C Spectacular | 15 | 3.2 | 0.6 | 0.5 | 0.45 | 8 | 20 | 1.0 |
+
+Each block within the radius gets Δv × energy × (1 − d/r)^falloff × clamp((0.55 / mass)^0.2, 0.6, 1.15), capped, along normalize(forward × incoming + radial × horizontal-away + up × Y), plus tumble about the axis perpendicular to the push. The struck block counts as distance 0. SceneKit reports contacts after resolving them, so the orb's velocity from the previous frame is used as the incoming velocity.
+
+Level 1 (Lunar Gateway) is now three separate pieces: two pylons at x ±2.3 and a central gate. 5 shots, 60% target, stars at 2 / 3 / 5 shots. Levels 2 and 3 were moved onto the smaller island with 5 shots and a 70% target but were not rebalanced.
+
+Verification so far (web preview, cannon.js, headless): every direct hit on one piece destroys it (33%, 4–7 blocks into the void) under presets A and B; a simulated new player with ±2.5° aim error wins in 2–3 shots. The iOS build is checked by CI only; feel and frame rate on a device are not verified.
+
 ## Build sheet 2.0 (v0.2.0)
 
 Goal: destroying futuristic structures on a moon suspended over an endless
