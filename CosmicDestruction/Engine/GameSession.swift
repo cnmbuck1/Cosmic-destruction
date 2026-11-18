@@ -7,6 +7,10 @@ import simd
 struct HUDState: Equatable {
     var levelNumber = 1
     var levelName = ""
+    /// Short world name shown with the level number ("MOON", "MARS").
+    var worldName = "MOON"
+    /// FIRE button enabled (build 5: releasing the drag no longer fires).
+    var canFire = false
     var shotsRemaining = 3
     var maxShots = 3
     var progress: Float = 0
@@ -65,6 +69,8 @@ final class GameSession: ObservableObject, AimInputDelegate {
     @Published private(set) var isPaused = false
     @Published private(set) var debugStats = DebugStats()
     @Published var showDebugPanel = false
+    /// Title card shown when play arrives on a world (build 5).
+    @Published private(set) var worldBanner: WorldTheme?
     /// Live tuning (debug overlay edits this copy, never the production defaults).
     @Published var tuning = PhysicsTuning() {
         didSet { applyTuning(previous: oldValue) }
@@ -172,8 +178,11 @@ final class GameSession: ObservableObject, AimInputDelegate {
 
     func loadLevel(index: Int) {
         guard let level = levelManager.level(at: index) else { return }
+        let previousWorld = sceneManager.world
         levelIndex = index
         levelToken = UUID()
+        let world = WorldTheme.forLevel(index: index)
+        sceneManager.apply(world: world)
 
         effects.endSlowMotionImmediately()
         orbs.removeAll()
@@ -199,6 +208,17 @@ final class GameSession: ObservableObject, AimInputDelegate {
         setPaused(false)
         updateTrajectory(emphasis: 0.35)
         publishHUD()
+        if previousWorld != world.key || index % WorldTheme.levelsPerWorld == 0 { showWorldBanner(world) }
+    }
+
+    private func showWorldBanner(_ world: WorldTheme) {
+        worldBanner = world
+        let token = levelToken
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            guard let self, self.levelToken == token else { return }
+            self.worldBanner = nil
+        }
     }
 
     func restart() {
@@ -264,9 +284,20 @@ final class GameSession: ObservableObject, AimInputDelegate {
         updateTrajectory(emphasis: 1)
     }
 
+    /// Build 5: lifting the finger only sets the aim. The FIRE button launches,
+    /// so an accidental lift never wastes a shot.
     func aimEnded(at point: CGPoint) {
         guard isDragging else { return }
         aimMoved(to: point)
+        isDragging = false
+        cannon.cancelCharging()
+        updateTrajectory(emphasis: 0.7)
+        publishHUD()
+    }
+
+    /// FIRE button.
+    func fireButtonPressed() {
+        guard canAim else { return }
         isDragging = false
         fire()
     }
@@ -566,6 +597,8 @@ final class GameSession: ObservableObject, AimInputDelegate {
         let state = HUDState(
             levelNumber: levelIndex + 1,
             levelName: level.name,
+            worldName: WorldTheme.forLevel(index: levelIndex).shortName,
+            canFire: canAim,
             shotsRemaining: gameManager.shotsRemaining,
             maxShots: level.maxShots,
             progress: structure.progress,

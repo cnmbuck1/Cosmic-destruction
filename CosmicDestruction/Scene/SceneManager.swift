@@ -36,6 +36,7 @@ final class SceneManager {
         scene.physicsWorld.timeStep = 1.0 / 120.0
         buildBackground()
         buildLighting()
+        apply(world: WorldTheme.all[0])
         buildCamera()
         scene.rootNode.addChildNode(PlatformBuilder.makePlatform(config: DestructionPhysicsConfig()))
         scene.rootNode.addChildNode(energyCircle)
@@ -108,41 +109,14 @@ final class SceneManager {
     // MARK: Background
 
     private func buildBackground() {
-        let lib = MaterialLibrary.shared
-        scene.background.contents = lib.spaceBackground
-        // Use the same backdrop as a dim environment map for PBR reflections.
-        scene.lightingEnvironment.contents = lib.spaceBackground
         scene.lightingEnvironment.intensity = 0.8
-
-        // Distant ringed planet, unlit so it never competes with the arena lighting.
-        let planet = SCNSphere(radius: 16)
-        planet.segmentCount = 48
-        let planetMat = SCNMaterial()
-        planetMat.lightingModel = .constant
-        planetMat.diffuse.contents = ProceduralTextures.planetBands()
-        planetMat.multiply.contents = UIColor(white: 0.55, alpha: 1)
-        planet.materials = [planetMat]
-        let planetNode = SCNNode(geometry: planet)
-        planetNode.position = SCNVector3(x: -70, y: 34, z: -150)
-        planetNode.eulerAngles = SCNVector3(x: 0.3, y: 0, z: 0.35)
-        planetNode.castsShadow = false
-
-        let ring = SCNTube(innerRadius: 21, outerRadius: 29, height: 0.05)
-        ring.radialSegmentCount = 64
-        let ringMat = MaterialLibrary.glow(Palette.purple.withAlphaComponent(0.35), additive: true)
-        ring.materials = [ringMat]
-        let ringNode = SCNNode(geometry: ring)
-        ringNode.eulerAngles.x = 0.25
-        planetNode.addChildNode(ringNode)
-        planetNode.runAction(.repeatForever(.rotateBy(x: 0, y: 0.2, z: 0, duration: 30)))
-        scene.rootNode.addChildNode(planetNode)
-
         // A faint violet glow deep below the fragment gives the void depth.
         let glow = SCNPlane(width: 60, height: 60)
         let glowMat = MaterialLibrary.glow(MaterialLibrary.shared.glowImage)
         glowMat.multiply.contents = UIColor(red: 0.1, green: 0.06, blue: 0.22, alpha: 1)
         glow.materials = [glowMat]
-        let glowNode = SCNNode(geometry: glow)
+        let glowNode = deepGlow
+        glowNode.geometry = glow
         glowNode.position = SCNVector3(x: 0, y: -26, z: -12)
         glowNode.constraints = [SCNBillboardConstraint()]
         glowNode.castsShadow = false
@@ -150,10 +124,39 @@ final class SceneManager {
         scene.rootNode.addChildNode(glowNode)
     }
 
+    // MARK: Worlds (build 5)
+
+    private let deepGlow = SCNNode()
+    private let ambientLight = SCNLight()
+    private let keyLight = SCNLight()
+    private let rimLight = SCNLight()
+    private let accentLight = SCNLight()
+    private(set) var world: WorldTheme.Key?
+
+    /// Switches sky, reflections, island colors and lights to a world.
+    /// Three.js light intensities from the web build map to SceneKit lumens
+    /// with the same ratios the Moon used before build 5.
+    func apply(world theme: WorldTheme) {
+        guard world != theme.key else { return }
+        world = theme.key
+        let sky = MaterialLibrary.shared.apply(world: theme)
+        scene.background.contents = sky
+        scene.lightingEnvironment.contents = sky
+        let L = theme.light
+        ambientLight.color = MaterialLibrary.uiColor(L.ambient)
+        ambientLight.intensity = CGFloat(L.ambientIntensity * 473)
+        keyLight.color = MaterialLibrary.uiColor(L.key)
+        keyLight.intensity = CGFloat(L.keyIntensity * 690)
+        rimLight.color = MaterialLibrary.uiColor(L.rim)
+        rimLight.intensity = CGFloat(L.rimIntensity * 690)
+        accentLight.color = MaterialLibrary.uiColor(L.accent)
+        deepGlow.geometry?.firstMaterial?.multiply.contents = MaterialLibrary.uiColor(L.deep)
+    }
+
     // MARK: Lighting
 
     private func buildLighting() {
-        let ambient = SCNLight()
+        let ambient = ambientLight
         ambient.type = .ambient
         ambient.color = UIColor(red: 0.35, green: 0.4, blue: 0.7, alpha: 1)
         ambient.intensity = 260
@@ -162,7 +165,7 @@ final class SceneManager {
         scene.rootNode.addChildNode(ambientNode)
 
         // Cyan-white key light with shadows for readable depth.
-        let key = SCNLight()
+        let key = keyLight
         key.type = .directional
         key.color = UIColor(red: 0.75, green: 0.93, blue: 1.0, alpha: 1)
         key.intensity = 1100
@@ -180,7 +183,7 @@ final class SceneManager {
         scene.rootNode.addChildNode(keyNode)
 
         // Purple rim light from behind the structure.
-        let rim = SCNLight()
+        let rim = rimLight
         rim.type = .directional
         rim.color = Palette.purple
         rim.intensity = 900
@@ -191,7 +194,7 @@ final class SceneManager {
         scene.rootNode.addChildNode(rimNode)
 
         // Soft violet accent near the arena floor.
-        let accent = SCNLight()
+        let accent = accentLight
         accent.type = .omni
         accent.color = Palette.purple
         accent.intensity = 250

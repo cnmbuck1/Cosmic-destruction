@@ -12,64 +12,7 @@ enum ProceduralTextures {
         return UIGraphicsImageRenderer(size: size, format: format)
     }
 
-    // MARK: Space background (equirectangular, 2:1)
-
-    static func spaceBackground() -> UIImage {
-        let size = CGSize(width: 2048, height: 1024)
-        var rng = SeededRandom(seed: 7)
-        return renderer(size).image { ctx in
-            let cg = ctx.cgContext
-            let space = CGColorSpaceCreateDeviceRGB()
-
-            // Vertical gradient: midnight blue at the horizon, near-black above/below.
-            let base = CGGradient(colorsSpace: space, colors: [
-                UIColor(red: 0.004, green: 0.006, blue: 0.02, alpha: 1).cgColor,
-                UIColor(red: 0.02, green: 0.03, blue: 0.09, alpha: 1).cgColor,
-                UIColor(red: 0.004, green: 0.006, blue: 0.02, alpha: 1).cgColor,
-            ] as CFArray, locations: [0, 0.55, 1])!
-            cg.drawLinearGradient(base, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
-
-            // Nebula: soft overlapping radial blobs in purple, cyan and magenta.
-            let nebulaColors: [UIColor] = [
-                UIColor(red: 0.3, green: 0.12, blue: 0.62, alpha: 1),
-                UIColor(red: 0.08, green: 0.2, blue: 0.6, alpha: 1),
-                UIColor(red: 0.12, green: 0.38, blue: 0.7, alpha: 1),
-            ]
-            for i in 0..<48 {
-                let color = nebulaColors[i % nebulaColors.count]
-                // Concentrate the nebula in a band behind the arena.
-                let center = CGPoint(x: rng.cg(200...1850), y: rng.cg(280...620))
-                let radius = rng.cg(90...300)
-                let alpha = rng.cg(0.05...0.13)
-                let gradient = CGGradient(colorsSpace: space, colors: [
-                    color.withAlphaComponent(alpha).cgColor,
-                    color.withAlphaComponent(0).cgColor,
-                ] as CFArray, locations: [0, 1])!
-                cg.drawRadialGradient(gradient, startCenter: center, startRadius: 0,
-                                      endCenter: center, endRadius: radius, options: [])
-            }
-
-            // Stars: many faint pinpoints, a few brighter ones with halos.
-            for _ in 0..<2600 {
-                let p = CGPoint(x: rng.cg(0...size.width), y: rng.cg(0...size.height))
-                let b = rng.cg(0.25...0.9)
-                let tint = rng.cg(0...1)
-                let color = UIColor(red: b * (0.85 + 0.15 * tint), green: b * 0.92, blue: b, alpha: 1)
-                cg.setFillColor(color.cgColor)
-                let s = rng.cg(0.6...1.6)
-                cg.fill(CGRect(x: p.x, y: p.y, width: s, height: s))
-            }
-            for _ in 0..<70 {
-                let p = CGPoint(x: rng.cg(0...size.width), y: rng.cg(0...size.height))
-                let halo = CGGradient(colorsSpace: space, colors: [
-                    UIColor(red: 0.85, green: 0.95, blue: 1, alpha: 0.9).cgColor,
-                    UIColor(red: 0.5, green: 0.8, blue: 1, alpha: 0).cgColor,
-                ] as CFArray, locations: [0, 1])!
-                cg.drawRadialGradient(halo, startCenter: p, startRadius: 0, endCenter: p,
-                                      endRadius: rng.cg(2.5...6), options: [])
-            }
-        }
-    }
+    // Skies are painted per world by SkyPainter (build 5).
 
     // MARK: Lunar fragment
 
@@ -127,9 +70,20 @@ enum ProceduralTextures {
 
     private static func byte(_ v: Float) -> UInt8 { UInt8((v.clamped(0, 1) * 255).rounded()) }
 
+    /// A linear-light multiplier expressed as a scale on sRGB values.
+    private static func srgbScale(_ tint: SIMD3<Float>) -> SIMD3<Float> {
+        SIMD3<Float>(pow(tint.x, 1 / 2.2), pow(tint.y, 1 / 2.2), pow(tint.z, 1 / 2.2))
+    }
+
+    private static func uiColor(_ v: SIMD3<Float>) -> UIColor {
+        UIColor(red: CGFloat(v.x), green: CGFloat(v.y), blue: CGFloat(v.z), alpha: 1)
+    }
+
     /// Grey-blue regolith: darker crater floors, lighter sunlit rims, speckle.
-    static func lunarSurfaceDiffuse() -> UIImage {
+    /// `tint` is the world's linear ground multiplier (build 5), applied in sRGB space.
+    static func lunarSurfaceDiffuse(tint: SIMD3<Float> = [1, 1, 1]) -> UIImage {
         let n = lunarFieldSize
+        let k = srgbScale(tint)
         let field = lunarHeightField
         let speckle = ValueNoise(seed: 77)
         return image(size: n) { x, y in
@@ -140,7 +94,7 @@ enum ProceduralTextures {
             let lit = (-(hx + hy) * 9).clamped(-0.25, 0.25)
             let grain = speckle.value(Float(x) * 0.9, Float(y) * 0.9) - 0.5
             let base = 0.13 + 0.12 * h + lit * 0.35 + grain * 0.05
-            return (byte(base * 0.95), byte(base * 0.97), byte(base * 1.08))
+            return (byte(base * 0.95 * k.x), byte(base * 0.97 * k.y), byte(base * 1.08 * k.z))
         }
     }
 
@@ -157,7 +111,8 @@ enum ProceduralTextures {
 
     /// Emission: a few thin cyan fractures and purple veins, kept mostly to
     /// the outer region so the play area stays calm. No grid, no rings.
-    static func lunarSurfaceEmission() -> UIImage {
+    /// `veins` recolors the fractures per world (build 5); the shapes never change.
+    static func lunarSurfaceEmission(veins: [SIMD3<Float>] = WorldTheme.all[0].veins) -> UIImage {
         let size = CGSize(width: 1024, height: 1024)
         var rng = SeededRandom(seed: 33)
         return renderer(size).image { ctx in
@@ -167,10 +122,7 @@ enum ProceduralTextures {
             cg.setLineCap(.round)
             cg.setLineJoin(.round)
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let colors = [
-                UIColor(red: 0.2, green: 0.9, blue: 1.0, alpha: 1),
-                UIColor(red: 0.6, green: 0.28, blue: 1.0, alpha: 1),
-            ]
+            let colors = veins.map(uiColor)
             for i in 0..<14 {
                 let color = colors[i % 2]
                 // Start in the outer ring and wander roughly tangentially.
@@ -199,8 +151,9 @@ enum ProceduralTextures {
     }
 
     /// Horizontal rock layers for the fragment's sides (tiles horizontally).
-    static func strataDiffuse() -> UIImage {
+    static func strataDiffuse(tint: SIMD3<Float> = [1, 1, 1]) -> UIImage {
         let n = 512
+        let k = srgbScale(tint)
         var rng = SeededRandom(seed: 51)
         var bands: [Float] = []
         var shade: Float = 0.12
@@ -216,12 +169,12 @@ enum ProceduralTextures {
             let row = min(max(y + wobble, 0), n - 1)
             let grain = noise.fbm(Float(x) / 9, Float(y) / 3, octaves: 3) * 0.05
             let v = bands[row] + grain
-            return (byte(v * 0.95), byte(v * 0.95), byte(v * 1.12))
+            return (byte(v * 0.95 * k.x), byte(v * 0.95 * k.y), byte(v * 1.12 * k.z))
         }
     }
 
     /// Sparse purple veins along a couple of layers, with rare cyan glints.
-    static func strataEmission() -> UIImage {
+    static func strataEmission(veins: [SIMD3<Float>] = WorldTheme.all[0].veins) -> UIImage {
         let size = CGSize(width: 512, height: 512)
         var rng = SeededRandom(seed: 57)
         return renderer(size).image { ctx in
@@ -230,7 +183,7 @@ enum ProceduralTextures {
             cg.fill(CGRect(origin: .zero, size: size))
             cg.setLineCap(.round)
             for i in 0..<5 {
-                let color = i == 0 ? Palette.cyan : Palette.purple
+                let color = uiColor(i == 0 ? veins[0] : veins[1])
                 var p = CGPoint(x: rng.cg(0...512), y: rng.cg(60...460))
                 let path = CGMutablePath()
                 path.move(to: p)
@@ -413,25 +366,6 @@ enum ProceduralTextures {
                 cg.setStrokeColor(UIColor(white: 1, alpha: alpha).cgColor)
                 cg.setLineWidth(width)
                 cg.strokeEllipse(in: rect.insetBy(dx: inset, dy: inset))
-            }
-        }
-    }
-
-    // MARK: Distant planet
-
-    static func planetBands() -> UIImage {
-        let size = CGSize(width: 512, height: 256)
-        var rng = SeededRandom(seed: 99)
-        return renderer(size).image { ctx in
-            let cg = ctx.cgContext
-            var y: CGFloat = 0
-            while y < size.height {
-                let h = rng.cg(6...26)
-                let t = rng.cg(0...1)
-                let color = UIColor(red: 0.18 + 0.2 * t, green: 0.1 + 0.08 * t, blue: 0.35 + 0.25 * t, alpha: 1)
-                cg.setFillColor(color.cgColor)
-                cg.fill(CGRect(x: 0, y: y, width: size.width, height: h))
-                y += h
             }
         }
     }

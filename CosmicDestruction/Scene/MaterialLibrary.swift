@@ -1,5 +1,6 @@
 import SceneKit
 import UIKit
+import simd
 
 /// Palette for the whole game.
 enum Palette {
@@ -45,7 +46,44 @@ final class MaterialLibrary {
 
     // MARK: Textures
 
-    lazy var spaceBackground: UIImage = ProceduralTextures.spaceBackground()
+    // MARK: Worlds (build 5)
+
+    private struct WorldTextures {
+        let sky: UIImage, topDiffuse: UIImage, topEmission: UIImage, strataDiffuse: UIImage, strataEmission: UIImage
+    }
+    /// Only the current world's textures are kept (a 4096 x 2048 sky is 32 MB).
+    private var worldTextures: (key: WorldTheme.Key, textures: WorldTextures)?
+    private(set) var currentWorld: WorldTheme.Key?
+
+    private func textures(for world: WorldTheme) -> WorldTextures {
+        if let cached = worldTextures, cached.key == world.key { return cached.textures }
+        let t = WorldTextures(sky: SkyPainter.image(for: world),
+                              topDiffuse: ProceduralTextures.lunarSurfaceDiffuse(tint: world.ground),
+                              topEmission: ProceduralTextures.lunarSurfaceEmission(veins: world.veins),
+                              strataDiffuse: ProceduralTextures.strataDiffuse(tint: world.rock),
+                              strataEmission: ProceduralTextures.strataEmission(veins: world.veins))
+        worldTextures = (world.key, t)
+        return t
+    }
+
+    static func uiColor(_ v: SIMD3<Float>) -> UIColor {
+        UIColor(red: CGFloat(v.x), green: CGFloat(v.y), blue: CGFloat(v.z), alpha: 1)
+    }
+
+    /// Recolors the shared island materials for a world and returns its sky.
+    @discardableResult
+    func apply(world: WorldTheme) -> UIImage {
+        let t = textures(for: world)
+        currentWorld = world.key
+        platformTop.diffuse.contents = t.topDiffuse
+        platformTop.emission.contents = t.topEmission
+        platformStrata.diffuse.contents = t.strataDiffuse
+        platformStrata.emission.contents = t.strataEmission
+        rimCyan.emission.contents = Self.uiColor(world.veins[0])
+        crystal.emission.contents = Self.uiColor(world.veins[1])
+        energyCircle.multiply.contents = Self.uiColor(simd_mix(world.veins[0], SIMD3<Float>(repeating: 1), SIMD3<Float>(repeating: 0.25)))
+        return t.sky
+    }
     lazy var glowImage: UIImage = ProceduralTextures.radialGlow()
     lazy var shockwaveImage: UIImage = ProceduralTextures.shockwaveRing()
 

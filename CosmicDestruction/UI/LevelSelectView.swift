@@ -21,19 +21,28 @@ struct LevelSelectView: View {
                     .neonGlow()
                     .padding(.bottom, 8)
 
-                // 13 levels (build 4): the list scrolls.
+                // Grouped by world (build 5): 10 levels per planet. Planets
+                // without levels yet are listed as coming soon.
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 12) {
-                        ForEach(Array(Levels.all.enumerated()), id: \.element.id) { index, level in
-                            let unlocked = progress.isUnlocked(index: index)
-                            Button {
-                                if unlocked { onSelect(index) }
-                            } label: {
-                                LevelCard(level: level, index: index, unlocked: unlocked,
-                                          stars: progress.stars(forLevelID: level.id))
+                        ForEach(Array(WorldTheme.all.enumerated()), id: \.element.key) { w, world in
+                            let first = w * WorldTheme.levelsPerWorld
+                            let last = min(first + WorldTheme.levelsPerWorld, Levels.all.count)
+                            WorldHeader(world: world, range: first < last ? (first + 1)...last : nil)
+                            if first < last {
+                                ForEach(first..<last, id: \.self) { index in
+                                    let level = Levels.all[index]
+                                    let unlocked = progress.isUnlocked(index: index)
+                                    Button {
+                                        if unlocked { onSelect(index) }
+                                    } label: {
+                                        LevelCard(level: level, index: index, unlocked: unlocked,
+                                                  stars: progress.stars(forLevelID: level.id))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!unlocked)
+                                }
                             }
-                            .buttonStyle(.plain)
-                            .disabled(!unlocked)
                         }
                     }
                     .padding(.bottom, 24)
@@ -42,6 +51,30 @@ struct LevelSelectView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
         }
+    }
+}
+
+private struct WorldHeader: View {
+    let world: WorldTheme
+    let range: ClosedRange<Int>?
+
+    var body: some View {
+        let tint = Color(red: Double(world.veins[0].x), green: Double(world.veins[0].y), blue: Double(world.veins[0].z))
+        VStack(spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("WORLD \(world.number) · \(world.name.uppercased())")
+                    .font(Theme.label(13))
+                    .tracking(2.5)
+                    .foregroundStyle(tint)
+                Spacer()
+                Text(range.map { "Levels \($0.lowerBound)–\($0.upperBound)" } ?? "Coming soon")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.textDim)
+            }
+            Rectangle().fill(tint.opacity(0.7)).frame(height: 1)
+        }
+        .padding(.top, 10)
+        .padding(.horizontal, 4)
     }
 }
 
